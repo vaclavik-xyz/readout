@@ -33,9 +33,17 @@ Native macOS measurement app rewrite focused on speed, reliability, and clean UI
   - JSON config store
   - legacy key migration from Python config format
   - value clamping during load for safer runtime behavior
+- `ReadOutIO` now includes real serial transport foundations:
+  - POSIX serial port implementation (open/configure/read/write line)
+  - streaming transport (USB-C style)
+  - SCPI polling transport with fallback query path (multimeter style)
+  - serial port discovery helper
+- high-level device drivers are now available:
+  - `MultimeterDeviceDriver` (mode refresh + SCPI polling + beeper verification)
+  - `UsbCDeviceDriver` (frame decoding + energy accumulation/reset)
 
 ## Next Milestones
-1. Add real serial transport implementation in `ReadOutIO`
-2. Add fixture-driven compatibility tests from real device captures
-3. Implement SwiftUI macOS app target with dual-device dashboard and graphs
-4. Add settings + CSV/OBS output parity
+1. Add fixture-driven compatibility tests from real device captures
+2. Implement SwiftUI macOS app target with dual-device dashboard and graphs
+3. Add settings + CSV/OBS output parity
+4. Add long-run soak tests for reconnect + serial fault scenarios
