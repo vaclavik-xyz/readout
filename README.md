@@ -41,9 +41,11 @@ Native macOS measurement app rewrite focused on speed, reliability, and clean UI
 - high-level device drivers are now available:
   - `MultimeterDeviceDriver` (mode refresh + SCPI polling + beeper verification)
   - `UsbCDeviceDriver` (frame decoding + energy accumulation/reset)
+- fixture-driven parser compatibility tests are now in place
+  - fixture schema documented in `docs/fixture-format.md`
 
 ## Next Milestones
-1. Add fixture-driven compatibility tests from real device captures
+1. Add real device capture fixtures (multimeter + USB-C) to expand compatibility matrix
 2. Implement SwiftUI macOS app target with dual-device dashboard and graphs
 3. Add settings + CSV/OBS output parity
 4. Add long-run soak tests for reconnect + serial fault scenarios

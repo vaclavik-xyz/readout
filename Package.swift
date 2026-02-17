@@ -35,7 +35,10 @@ let package = Package(
         ),
         .testTarget(
             name: "ReadOutCoreTests",
-            dependencies: ["ReadOutCore"]
+            dependencies: ["ReadOutCore"],
+            resources: [
+                .process("Fixtures")
+            ]
         ),
         .testTarget(
             name: "ReadOutIOTests",
