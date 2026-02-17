@@ -3,12 +3,20 @@ import Foundation
 import AppKit
 #endif
 
-final class PcBeepController {
+final class PcBeepController: @unchecked Sendable {
     private var task: Task<Void, Never>?
     private let intervalSeconds: TimeInterval
+    private var soundPreset: MacAlertSoundPreset
+    private var volume: Double
 
-    init(intervalSeconds: TimeInterval = 0.7) {
+    init(
+        intervalSeconds: TimeInterval = 0.7,
+        soundPreset: MacAlertSoundPreset = .system,
+        volume: Double = 0.5
+    ) {
         self.intervalSeconds = intervalSeconds
+        self.soundPreset = soundPreset
+        self.volume = max(0, min(1, volume))
     }
 
     deinit {
@@ -23,6 +31,11 @@ final class PcBeepController {
         }
     }
 
+    func configure(soundPreset: MacAlertSoundPreset, volume: Double) {
+        self.soundPreset = soundPreset
+        self.volume = max(0, min(1, volume))
+    }
+
     private func start() {
         guard task == nil else {
             return
@@ -31,11 +44,7 @@ final class PcBeepController {
         let interval = intervalSeconds
         task = Task {
             while !Task.isCancelled {
-                #if canImport(AppKit)
-                await MainActor.run {
-                    NSSound.beep()
-                }
-                #endif
+                await playTick()
 
                 let nanos = UInt64(Swift.max(0, interval) * 1_000_000_000)
                 try? await Task.sleep(nanoseconds: nanos)
@@ -46,5 +55,45 @@ final class PcBeepController {
     private func stop() {
         task?.cancel()
         task = nil
+    }
+
+    private func playTick() async {
+        #if canImport(AppKit)
+        let preset = soundPreset
+        let volume = self.volume
+        await MainActor.run {
+            guard preset != .system else {
+                NSSound.beep()
+                return
+            }
+
+            guard let soundName = Self.soundName(for: preset) else {
+                NSSound.beep()
+                return
+            }
+
+            guard let sound = NSSound(named: NSSound.Name(soundName)) else {
+                NSSound.beep()
+                return
+            }
+
+            sound.stop()
+            sound.volume = Float(volume)
+            sound.play()
+        }
+        #endif
+    }
+
+    private static func soundName(for preset: MacAlertSoundPreset) -> String? {
+        switch preset {
+        case .system:
+            return nil
+        case .glass:
+            return "Glass"
+        case .sosumi:
+            return "Sosumi"
+        case .funk:
+            return "Funk"
+        }
     }
 }

@@ -11,12 +11,16 @@ struct ContentView: View {
     @State private var selectedMultimeterTimestamp: Date?
     @State private var selectedUsbCTimestamp: Date?
 
+    private var palette: DashboardPalette {
+        DashboardThemePalette.palette(for: viewModel.theme)
+    }
+
     var body: some View {
         ZStack {
             LinearGradient(
                 colors: [
-                    Color(red: 0.07, green: 0.08, blue: 0.11),
-                    Color(red: 0.02, green: 0.03, blue: 0.05)
+                    palette.backgroundTop,
+                    palette.backgroundBottom
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -30,13 +34,16 @@ struct ContentView: View {
                 cards
                 alarmHistoryStrip
                 charts
-                runtimeLogPanel
+                if viewModel.isRuntimeLogPanelVisible {
+                    runtimeLogPanel
+                }
             }
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
+        .preferredColorScheme(viewModel.theme.preferredColorScheme)
         .sheet(isPresented: $viewModel.isSettingsPresented) {
             SettingsView(
                 configuration: $viewModel.editableConfiguration,
@@ -72,14 +79,42 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("readOut")
                     .font(.system(size: 32, weight: .heavy, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(palette.primaryText)
                 Text("Realtime measurements for Multimeter + USB-C power meter")
                     .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(palette.secondaryText)
             }
             Spacer()
 
             HStack(spacing: 8) {
+                Picker("", selection: Binding(
+                    get: { viewModel.deviceVisibility },
+                    set: { viewModel.setDeviceVisibility($0) }
+                )) {
+                    ForEach(DashboardDeviceVisibility.allCases) { visibility in
+                        Text(visibility.title).tag(visibility)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 260)
+
+                Button(viewModel.isRenderPaused ? "Resume UI" : "Pause UI") {
+                    viewModel.toggleRenderPause()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(viewModel.isRenderPaused ? .green : .yellow)
+
+                Button(viewModel.isDashboardBeepEnabled ? "Beep On" : "Beep Off") {
+                    viewModel.toggleDashboardBeep()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(viewModel.isDashboardBeepEnabled ? .blue : .gray)
+
+                Button(viewModel.isRuntimeLogPanelVisible ? "Hide Logs" : "Show Logs") {
+                    viewModel.toggleRuntimeLogPanelVisibility()
+                }
+                .buttonStyle(.bordered)
+
                 Button("Refresh Ports") { viewModel.refreshPorts() }
                     .buttonStyle(.bordered)
 
@@ -126,18 +161,24 @@ struct ContentView: View {
         HStack(spacing: 10) {
             Label(viewModel.statusMessage, systemImage: "waveform.path.ecg")
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(palette.secondaryText)
                 .lineLimit(1)
 
             Spacer()
 
             Text(viewModel.configuration.useSimulator ? "Mode: Simulator" : "Mode: Hardware")
                 .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.7))
+                .foregroundStyle(palette.tertiaryText)
+
+            if viewModel.isRenderPaused {
+                Text("UI Paused")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(.yellow)
+            }
 
             Text("Ports: \(viewModel.availablePorts.count)")
                 .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.6))
+                .foregroundStyle(palette.tertiaryText)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -152,27 +193,43 @@ struct ContentView: View {
     }
 
     private var cards: some View {
-        HStack(spacing: 14) {
-            deviceCard(
-                title: "Multimeter",
-                status: viewModel.multimeterStatus,
-                primary: viewModel.multimeterPrimary,
-                secondary: viewModel.multimeterSecondary,
-                footerLeft: viewModel.multimeterMode,
-                footerRight: "Alert: \(viewModel.multimeterAlert)",
-                alertState: viewModel.multimeterAlertState
-            )
-
-            deviceCard(
-                title: "USB-C Meter",
-                status: viewModel.usbcStatus,
-                primary: viewModel.usbcVoltage,
-                secondary: viewModel.usbcCurrent,
-                footerLeft: viewModel.usbcPower,
-                footerRight: viewModel.usbcEnergy,
-                alertState: nil
-            )
+        Group {
+            switch viewModel.deviceVisibility {
+            case .both:
+                HStack(spacing: 14) {
+                    multimeterCard
+                    usbCCard
+                }
+            case .multimeter:
+                multimeterCard
+            case .usbc:
+                usbCCard
+            }
         }
+    }
+
+    private var multimeterCard: some View {
+        deviceCard(
+            title: "Multimeter",
+            status: viewModel.multimeterStatus,
+            primary: viewModel.multimeterPrimary,
+            secondary: viewModel.multimeterSecondary,
+            footerLeft: viewModel.multimeterMode,
+            footerRight: "Alert: \(viewModel.multimeterAlert)",
+            alertState: viewModel.multimeterAlertState
+        )
+    }
+
+    private var usbCCard: some View {
+        deviceCard(
+            title: "USB-C Meter",
+            status: viewModel.usbcStatus,
+            primary: viewModel.usbcVoltage,
+            secondary: viewModel.usbcCurrent,
+            footerLeft: viewModel.usbcPower,
+            footerRight: viewModel.usbcEnergy,
+            alertState: nil
+        )
     }
 
     private var charts: some View {
@@ -180,7 +237,7 @@ struct ContentView: View {
             HStack {
                 Text("Chart Range")
                     .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.8))
+                    .foregroundStyle(palette.secondaryText)
 
                 Picker("", selection: $viewModel.selectedChartRange) {
                     ForEach(ChartRangePreset.allCases) { range in
@@ -194,48 +251,63 @@ struct ContentView: View {
 
                 Text("MM: \(viewModel.displayedMultimeterSamples.count) pts | USB-C: \(viewModel.displayedUsbCSamples.count) pts")
                     .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.6))
+                    .foregroundStyle(palette.tertiaryText)
             }
 
 #if DEBUG
             Text(viewModel.chartPerformanceSummary)
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.55))
+                .foregroundStyle(palette.tertiaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
 #endif
 
-            HStack(spacing: 14) {
-                chartCard(
-                    title: "Multimeter Trend",
-                    color: .mint,
-                    samples: viewModel.displayedMultimeterSamples,
-                    markers: viewModel.displayedAlarmMarkers,
-                    reconnectMarkers: viewModel.displayedMultimeterConnectionMarkers,
-                    selectedTimestamp: $selectedMultimeterTimestamp,
-                    highThreshold: viewModel.configuration.dcvHighAlarmEnabled
-                        ? viewModel.configuration.dcvHighAlarmValue
-                        : nil,
-                    lowThreshold: viewModel.configuration.dcvLowAlarmEnabled
-                        ? viewModel.configuration.dcvLowAlarmValue
-                        : nil
-                )
-                chartCard(
-                    title: "USB-C Power Trend",
-                    color: .orange,
-                    samples: viewModel.displayedUsbCSamples,
-                    markers: [],
-                    reconnectMarkers: viewModel.displayedUsbCConnectionMarkers,
-                    selectedTimestamp: $selectedUsbCTimestamp,
-                    highThreshold: nil,
-                    lowThreshold: nil
-                )
+            switch viewModel.deviceVisibility {
+            case .both:
+                HStack(spacing: 14) {
+                    multimeterChart
+                    usbCChart
+                }
+            case .multimeter:
+                multimeterChart
+            case .usbc:
+                usbCChart
             }
         }
     }
 
+    private var multimeterChart: some View {
+        chartCard(
+            title: "Multimeter Trend",
+            color: palette.chartMultimeter,
+            samples: viewModel.displayedMultimeterSamples,
+            markers: viewModel.displayedAlarmMarkers,
+            reconnectMarkers: viewModel.displayedMultimeterConnectionMarkers,
+            selectedTimestamp: $selectedMultimeterTimestamp,
+            highThreshold: viewModel.configuration.dcvHighAlarmEnabled
+                ? viewModel.configuration.dcvHighAlarmValue
+                : nil,
+            lowThreshold: viewModel.configuration.dcvLowAlarmEnabled
+                ? viewModel.configuration.dcvLowAlarmValue
+                : nil
+        )
+    }
+
+    private var usbCChart: some View {
+        chartCard(
+            title: "USB-C Power Trend",
+            color: palette.chartUsbC,
+            samples: viewModel.displayedUsbCSamples,
+            markers: [],
+            reconnectMarkers: viewModel.displayedUsbCConnectionMarkers,
+            selectedTimestamp: $selectedUsbCTimestamp,
+            highThreshold: nil,
+            lowThreshold: nil
+        )
+    }
+
     private var alarmHistoryStrip: some View {
         Group {
-            if viewModel.displayedAlarmMarkers.isEmpty {
+            if viewModel.deviceVisibility == .usbc || viewModel.displayedAlarmMarkers.isEmpty {
                 EmptyView()
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -268,11 +340,14 @@ struct ContentView: View {
             HStack {
                 Text("Runtime Log")
                     .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(palette.primaryText)
                 Spacer()
+                Text(viewModel.isRuntimeLogCaptureEnabled ? "capture:on" : "capture:warn+err")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(viewModel.isRuntimeLogCaptureEnabled ? .mint : .yellow)
                 Text("\(viewModel.runtimeLogs.count) entries")
                     .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.6))
+                    .foregroundStyle(palette.tertiaryText)
             }
 
             ScrollView {
@@ -281,7 +356,7 @@ struct ContentView: View {
                         HStack(alignment: .top, spacing: 8) {
                             Text(entry.timestamp, format: .dateTime.hour().minute().second())
                                 .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundStyle(.white.opacity(0.6))
+                                .foregroundStyle(palette.tertiaryText)
 
                             Text(entry.level.rawValue)
                                 .font(.system(size: 10, weight: .black, design: .rounded))
@@ -292,7 +367,7 @@ struct ContentView: View {
 
                             Text(entry.message)
                                 .font(.system(size: 11, weight: .medium, design: .rounded))
-                                .foregroundStyle(.white.opacity(0.82))
+                                .foregroundStyle(palette.secondaryText)
 
                             Spacer(minLength: 0)
                         }
@@ -327,7 +402,7 @@ struct ContentView: View {
             HStack {
                 Text(title)
                     .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(palette.primaryText)
                 Spacer()
                 statusPill(status)
                 if let alertState, alertState != .none {
@@ -336,20 +411,20 @@ struct ContentView: View {
             }
             Text(primary)
                 .font(.system(size: 44, weight: .black, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(palette.primaryText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.65)
             Text(secondary)
                 .font(.system(size: 20, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.8))
-            Divider().overlay(.white.opacity(0.15))
+                .foregroundStyle(palette.secondaryText)
+            Divider().overlay(palette.divider)
             HStack {
                 Text(footerLeft)
                 Spacer()
                 Text(footerRight)
             }
             .font(.system(size: 12, weight: .medium, design: .rounded))
-            .foregroundStyle(.white.opacity(0.7))
+            .foregroundStyle(palette.secondaryText)
         }
         .padding(18)
         .frame(maxWidth: .infinity, minHeight: 230, alignment: .topLeading)
@@ -376,7 +451,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.system(size: 15, weight: .bold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.9))
+                .foregroundStyle(palette.primaryText)
 
             Chart(samples) { sample in
                 LineMark(
@@ -392,11 +467,11 @@ struct ContentView: View {
                     y: .value("Value", sample.value)
                 )
                 .interpolationMethod(.catmullRom)
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [color.opacity(0.35), color.opacity(0.05)],
-                        startPoint: .top,
-                        endPoint: .bottom
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [color.opacity(0.35), color.opacity(0.05)],
+                            startPoint: .top,
+                            endPoint: .bottom
                     )
                 )
 
@@ -453,7 +528,7 @@ struct ContentView: View {
             } else if !markers.isEmpty || !reconnectMarkers.isEmpty {
                 Text("Hover or drag across the chart for marker details")
                     .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(palette.tertiaryText)
             }
         }
         .padding(16)
@@ -463,7 +538,7 @@ struct ContentView: View {
                 .fill(.ultraThinMaterial)
                 .overlay(
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(.white.opacity(0.14), lineWidth: 1)
+                        .stroke(palette.cardStrokeDefault, lineWidth: 1)
                 )
         )
     }
@@ -594,12 +669,12 @@ struct ContentView: View {
 
     private func alertAccentColor(_ alertState: MeasurementAlertState?) -> Color {
         guard let alertState else {
-            return .white.opacity(0.14)
+            return palette.cardStrokeDefault
         }
 
         switch alertState {
         case .none:
-            return .white.opacity(0.14)
+            return palette.cardStrokeDefault
         case .short:
             return .orange
         case .open:

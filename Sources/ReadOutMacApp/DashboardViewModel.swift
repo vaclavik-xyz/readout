@@ -5,6 +5,21 @@ import ReadOutPersistence
 
 @MainActor
 final class DashboardViewModel: ObservableObject {
+    private struct MultimeterPresentationSnapshot {
+        let primary: String
+        let secondary: String
+        let mode: String
+        let alertText: String
+        let alertState: MeasurementAlertState
+    }
+
+    private struct UsbCPresentationSnapshot {
+        let voltage: String
+        let current: String
+        let power: String
+        let energy: String
+    }
+
     @Published var multimeterStatus: DeviceUIState = .disconnected
     @Published var usbcStatus: DeviceUIState = .disconnected
 
@@ -29,7 +44,8 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var displayedUsbCConnectionMarkers: [ConnectionOverlayMarker] = []
     @Published var selectedChartRange: ChartRangePreset = .twoMinutes {
         didSet {
-            refreshDisplayedCharts(reason: "range_changed")
+            markChartRefresh(multimeter: true, usbc: true, markers: true, reason: "range_changed")
+            processCoalescedUIRefreshTick(force: false)
         }
     }
 #if DEBUG
@@ -44,6 +60,12 @@ final class DashboardViewModel: ObservableObject {
     @Published var isSettingsPresented: Bool = false
     @Published var isRuntimeActive: Bool = false
     @Published var isRecoveryInProgress: Bool = false
+    @Published var deviceVisibility: DashboardDeviceVisibility = .both
+    @Published var theme: DashboardTheme = .system
+    @Published var isRuntimeLogPanelVisible: Bool = true
+    @Published var isRuntimeLogCaptureEnabled: Bool = true
+    @Published var isDashboardBeepEnabled: Bool = true
+    @Published var isRenderPaused: Bool = false
     @Published var isFirstRunWizardPresented: Bool = false
     @Published var firstRunConfiguration: AppConfiguration = .init()
     @Published private(set) var firstRunProbeResult: PortProbeResult = .empty
@@ -71,6 +93,33 @@ final class DashboardViewModel: ObservableObject {
     private var runtimeErrorCount = 0
     private var parseErrorCount = 0
     private var outputDropWarningCount = 0
+    private var latestMultimeterAlertState: MeasurementAlertState = .none
+    private var pendingMultimeterSnapshot: MultimeterPresentationSnapshot?
+    private var pendingUsbCSnapshot: UsbCPresentationSnapshot?
+    private var pendingRuntimeLogs: [RuntimeLogEntry] = []
+    private let uiRefreshCadenceHz = 10
+    private var uiRefreshTask: Task<Void, Never>?
+    private var multimeterChartDirty = true
+    private var usbCChartDirty = true
+    private var chartMarkersDirty = true
+    private var chartRefreshPending = true
+    private var pendingRefreshReasons: Set<String> = ["init"]
+    private var appliedUIRefreshTicks = 0
+    private var skippedUIRefreshTicks = 0
+#if DEBUG
+    private var lastMultimeterPipelineMetric = ChartPipelineMetric(
+        sourcePointCount: 0,
+        filteredPointCount: 0,
+        renderedPointCount: 0,
+        processingMilliseconds: 0
+    )
+    private var lastUsbCPipelineMetric = ChartPipelineMetric(
+        sourcePointCount: 0,
+        filteredPointCount: 0,
+        renderedPointCount: 0,
+        processingMilliseconds: 0
+    )
+#endif
 
     private lazy var runtime = ReadOutRuntime { [weak self] event in
         Task { @MainActor [weak self] in
@@ -83,12 +132,20 @@ final class DashboardViewModel: ObservableObject {
         let runtimeLogDirectoryURL = configurationService.resolveRuntimeLogDirectoryURL()
         configurationStore = ConfigurationStore(configFileURL: configURL)
         runtimeLogStore = RuntimeLogStore(logDirectoryURL: runtimeLogDirectoryURL)
+        syncDashboardStateFromConfiguration(.init())
+        configureBeepController()
         setStatusMessage("Config: \(configURL.path)")
-        refreshDisplayedCharts(reason: "init")
+        startUIRefreshLoop()
+        processCoalescedUIRefreshTick(force: true)
 
         Task {
             await bootstrap()
         }
+    }
+
+    deinit {
+        uiRefreshTask?.cancel()
+        pcBeepController.setBeeping(false)
     }
 
     func connectAll() {
@@ -134,6 +191,9 @@ final class DashboardViewModel: ObservableObject {
                 setStatusMessage("Disconnected")
                 multimeterAlert = "OK"
                 multimeterAlertState = .none
+                latestMultimeterAlertState = .none
+                pendingMultimeterSnapshot = nil
+                pendingUsbCSnapshot = nil
                 pcBeepController.setBeeping(false)
             }
         }
@@ -145,6 +205,8 @@ final class DashboardViewModel: ObservableObject {
 
         configuration = configurationService.normalized(configuration, availablePorts: discovered)
         editableConfiguration = configurationService.normalized(editableConfiguration, availablePorts: discovered)
+        syncDashboardStateFromConfiguration(configuration)
+        configureBeepController()
         if isFirstRunWizardPresented {
             firstRunProbeResult = configurationService.probePorts(discovered)
             firstRunBlockingIssues = connectBlockingIssues(for: firstRunConfiguration)
@@ -255,10 +317,13 @@ final class DashboardViewModel: ObservableObject {
         configuration = newConfig
         editableConfiguration = newConfig
         firstRunConfiguration = newConfig
+        syncDashboardStateFromConfiguration(newConfig)
+        configureBeepController()
         firstRunBlockingIssues = []
         isFirstRunWizardPresented = false
         trimChartsIfNeeded()
-        refreshDisplayedCharts(reason: "first_run_saved")
+        markChartRefresh(multimeter: true, usbc: true, markers: true, reason: "first_run_saved")
+        processCoalescedUIRefreshTick(force: true)
 
         Task {
             do {
@@ -282,7 +347,12 @@ final class DashboardViewModel: ObservableObject {
         usbcSamples.removeAll(keepingCapacity: true)
         alarmMarkers.removeAll(keepingCapacity: true)
         chartConnectionTimeline.removeAll(keepingCapacity: true)
-        refreshDisplayedCharts(reason: "charts_cleared")
+        multimeterChartDirty = true
+        usbCChartDirty = true
+        chartMarkersDirty = true
+        chartRefreshPending = true
+        pendingRefreshReasons.insert("charts_cleared")
+        processCoalescedUIRefreshTick(force: true)
         setStatusMessage("Charts cleared")
     }
 
@@ -290,9 +360,62 @@ final class DashboardViewModel: ObservableObject {
         selectedChartRange = range
     }
 
+    func setDeviceVisibility(_ visibility: DashboardDeviceVisibility) {
+        guard deviceVisibility != visibility else {
+            return
+        }
+
+        deviceVisibility = visibility
+        configuration.dashboardDeviceVisibility = visibility.configurationValue
+        editableConfiguration.dashboardDeviceVisibility = visibility.configurationValue
+        markChartRefresh(multimeter: true, usbc: true, markers: true, reason: "visibility_changed")
+        processCoalescedUIRefreshTick(force: true)
+        persistConfigurationSilently()
+    }
+
+    func setTheme(_ theme: DashboardTheme) {
+        guard self.theme != theme else {
+            return
+        }
+
+        self.theme = theme
+        configuration.dashboardTheme = theme.configurationValue
+        editableConfiguration.dashboardTheme = theme.configurationValue
+        persistConfigurationSilently()
+    }
+
+    func toggleRuntimeLogPanelVisibility() {
+        isRuntimeLogPanelVisible.toggle()
+        configuration.runtimeLogPanelVisible = isRuntimeLogPanelVisible
+        editableConfiguration.runtimeLogPanelVisible = isRuntimeLogPanelVisible
+        persistConfigurationSilently()
+    }
+
+    func toggleDashboardBeep() {
+        isDashboardBeepEnabled.toggle()
+        configuration.dashboardBeepMasterEnabled = isDashboardBeepEnabled
+        editableConfiguration.dashboardBeepMasterEnabled = isDashboardBeepEnabled
+        updatePcBeep(for: latestMultimeterAlertState)
+        persistConfigurationSilently()
+    }
+
+    func toggleRenderPause() {
+        isRenderPaused.toggle()
+        if isRenderPaused {
+            setStatusMessage("UI rendering paused")
+            return
+        }
+
+        setStatusMessage("UI rendering resumed")
+        processCoalescedUIRefreshTick(force: true)
+    }
+
     func resetVisualState() {
         multimeterAlert = "OK"
         multimeterAlertState = .none
+        latestMultimeterAlertState = .none
+        pendingMultimeterSnapshot = nil
+        updatePcBeep(for: .none)
         setStatusMessage("Visual state reset")
     }
 
@@ -309,6 +432,7 @@ final class DashboardViewModel: ObservableObject {
 
     func clearRuntimeLogs() {
         runtimeLogs.removeAll(keepingCapacity: true)
+        pendingRuntimeLogs.removeAll(keepingCapacity: true)
         statusMessage = "Runtime logs cleared"
         appendRuntimeLog("Runtime logs cleared", level: .info, persist: false)
 
@@ -370,9 +494,13 @@ final class DashboardViewModel: ObservableObject {
         }
 
         configuration = newConfig
+        editableConfiguration = newConfig
+        syncDashboardStateFromConfiguration(newConfig)
+        configureBeepController()
         isSettingsPresented = false
         trimChartsIfNeeded()
-        refreshDisplayedCharts(reason: "settings_saved")
+        markChartRefresh(multimeter: true, usbc: true, markers: true, reason: "settings_saved")
+        processCoalescedUIRefreshTick(force: true)
 
         Task {
             do {
@@ -401,10 +529,13 @@ final class DashboardViewModel: ObservableObject {
             let initial = configurationService.initialWizardConfiguration(availablePorts: availablePorts)
             configuration = initial
             editableConfiguration = initial
+            syncDashboardStateFromConfiguration(initial)
+            configureBeepController()
             presentFirstRunWizard(reason: "missing_configuration", baseConfiguration: initial)
             setStatusMessage("Welcome. Complete setup before connecting.", level: .warning)
             appendHealthSnapshot(reason: "bootstrap_first_run")
-            refreshDisplayedCharts(reason: "bootstrap_first_run")
+            markChartRefresh(multimeter: true, usbc: true, markers: true, reason: "bootstrap_first_run")
+            processCoalescedUIRefreshTick(force: true)
             return
         }
 
@@ -414,6 +545,8 @@ final class DashboardViewModel: ObservableObject {
 
             configuration = normalized
             editableConfiguration = normalized
+            syncDashboardStateFromConfiguration(normalized)
+            configureBeepController()
             let validation = AppConfigurationValidator.validate(normalized)
             let blockingIssues = connectBlockingIssues(for: normalized)
             if blockingIssues.isEmpty && !validation.hasErrors {
@@ -423,15 +556,19 @@ final class DashboardViewModel: ObservableObject {
                 presentFirstRunWizard(reason: "invalid_configuration", baseConfiguration: normalized)
             }
             appendHealthSnapshot(reason: "bootstrap_loaded")
-            refreshDisplayedCharts(reason: "bootstrap_loaded")
+            markChartRefresh(multimeter: true, usbc: true, markers: true, reason: "bootstrap_loaded")
+            processCoalescedUIRefreshTick(force: true)
         } catch {
             let fallback = configurationService.initialWizardConfiguration(availablePorts: availablePorts)
             configuration = fallback
             editableConfiguration = fallback
+            syncDashboardStateFromConfiguration(fallback)
+            configureBeepController()
             presentFirstRunWizard(reason: "load_failed", baseConfiguration: fallback)
             setStatusMessage("Failed to load config. Setup wizard opened.", level: .error)
             appendHealthSnapshot(reason: "bootstrap_load_failed")
-            refreshDisplayedCharts(reason: "bootstrap_load_failed")
+            markChartRefresh(multimeter: true, usbc: true, markers: true, reason: "bootstrap_load_failed")
+            processCoalescedUIRefreshTick(force: true)
         }
     }
 
@@ -483,14 +620,20 @@ final class DashboardViewModel: ObservableObject {
     }
 
     private func handleMultimeterMeasurement(_ measurement: DeviceMeasurement) {
-        let previousAlert = multimeterAlertState
-        multimeterPrimary = MeasurementDisplayFormatter.multimeterPrimary(measurement)
-        multimeterSecondary = MeasurementDisplayFormatter.multimeterSecondary(measurement)
-        multimeterMode = MeasurementDisplayFormatter.multimeterModeTitle(measurement)
+        let previousAlert = latestMultimeterAlertState
+        let primary = MeasurementDisplayFormatter.multimeterPrimary(measurement)
+        let secondary = MeasurementDisplayFormatter.multimeterSecondary(measurement)
+        let mode = MeasurementDisplayFormatter.multimeterModeTitle(measurement)
 
         let alert = DashboardAlertService.evaluate(measurement: measurement, configuration: configuration)
-        multimeterAlert = DashboardAlertService.text(for: alert)
-        multimeterAlertState = alert
+        latestMultimeterAlertState = alert
+        pendingMultimeterSnapshot = MultimeterPresentationSnapshot(
+            primary: primary,
+            secondary: secondary,
+            mode: mode,
+            alertText: DashboardAlertService.text(for: alert),
+            alertState: alert
+        )
         appendAlarmMarkerIfNeeded(
             previousAlert: previousAlert,
             currentAlert: alert,
@@ -501,43 +644,49 @@ final class DashboardViewModel: ObservableObject {
             setStatusMessage(alertMessage, level: .warning)
         }
 
-        pcBeepController.setBeeping(
-            DashboardAlertService.shouldBeep(for: alert, configuration: configuration)
-        )
+        updatePcBeep(for: alert)
 
         if let value = measurement.primaryValue {
             multimeterSamples.append(ChartSample(timestamp: measurement.timestamp, value: value))
             trimChartsIfNeeded()
         }
 
-        refreshDisplayedCharts(reason: "multimeter_measurement")
+        markChartRefresh(multimeter: true, markers: true, reason: "multimeter_measurement")
     }
 
     private func handleUsbCMeasurement(_ measurement: DeviceMeasurement) {
+        let voltageText: String
         if let voltage = measurement.primaryValue {
-            usbcVoltage = String(format: "%.3f V", voltage)
+            voltageText = String(format: "%.3f V", voltage)
         } else {
-            usbcVoltage = "---"
+            voltageText = "---"
         }
 
+        let currentText: String
         if let current = measurement.secondaryValue {
-            usbcCurrent = String(format: "%.4f A", current)
+            currentText = String(format: "%.4f A", current)
         } else {
-            usbcCurrent = "---"
+            currentText = "---"
         }
 
+        let powerText: String
         if let power = measurement.powerWatts {
-            usbcPower = String(format: "Power: %.3f W", power)
+            powerText = String(format: "Power: %.3f W", power)
             usbcSamples.append(ChartSample(timestamp: measurement.timestamp, value: power))
             trimChartsIfNeeded()
         } else {
-            usbcPower = "Power: ---"
+            powerText = "Power: ---"
         }
 
         let energyMWh = measurement.energyMWh.map { String(format: "%.1f", $0) } ?? "---"
         let energyMAh = measurement.energyMAh.map { String(format: "%.1f", $0) } ?? "---"
-        usbcEnergy = "Energy: \(energyMWh) mWh | \(energyMAh) mAh"
-        refreshDisplayedCharts(reason: "usbc_measurement")
+        pendingUsbCSnapshot = UsbCPresentationSnapshot(
+            voltage: voltageText,
+            current: currentText,
+            power: powerText,
+            energy: "Energy: \(energyMWh) mWh | \(energyMAh) mAh"
+        )
+        markChartRefresh(usbc: true, reason: "usbc_measurement")
     }
 
     private func refreshRuntimeStateFlag() {
@@ -573,6 +722,9 @@ final class DashboardViewModel: ObservableObject {
 
         multimeterAlert = "OK"
         multimeterAlertState = .none
+        latestMultimeterAlertState = .none
+        pendingMultimeterSnapshot = nil
+        pendingUsbCSnapshot = nil
         setStatusMessage("Recovery: restarting runtime...", level: .warning)
 
         await runtime.start(with: configSnapshot)
@@ -609,7 +761,11 @@ final class DashboardViewModel: ObservableObject {
     }
 
     private func appendRuntimeLog(_ message: String, level: RuntimeLogLevel, persist: Bool) {
-        if let last = runtimeLogs.last, last.message == message, last.level == level {
+        if !shouldCaptureRuntimeLog(level: level) {
+            return
+        }
+
+        if let last = lastRuntimeLogEntry(), last.message == message, last.level == level {
             return
         }
 
@@ -618,10 +774,14 @@ final class DashboardViewModel: ObservableObject {
             level: level,
             message: message
         )
-        runtimeLogs.append(entry)
 
-        if runtimeLogs.count > 200 {
-            runtimeLogs.removeFirst(runtimeLogs.count - 200)
+        if isRenderPaused {
+            pendingRuntimeLogs.append(entry)
+            if pendingRuntimeLogs.count > 300 {
+                pendingRuntimeLogs.removeFirst(pendingRuntimeLogs.count - 300)
+            }
+        } else {
+            appendRuntimeLogToUI(entry)
         }
 
         if persist {
@@ -657,6 +817,62 @@ final class DashboardViewModel: ObservableObject {
     private func reportRuntimeLogPersistenceIssue(_ message: String) {
         statusMessage = message
         appendRuntimeLog(message, level: .warning, persist: false)
+    }
+
+    private func syncDashboardStateFromConfiguration(_ config: AppConfiguration) {
+        deviceVisibility = DashboardDeviceVisibility(configurationValue: config.dashboardDeviceVisibility)
+        theme = DashboardTheme(configurationValue: config.dashboardTheme)
+        isRuntimeLogPanelVisible = config.runtimeLogPanelVisible
+        isRuntimeLogCaptureEnabled = config.runtimeLogCaptureEnabled
+        isDashboardBeepEnabled = config.dashboardBeepMasterEnabled
+    }
+
+    private func configureBeepController() {
+        let preset = MacAlertSoundPreset(configurationValue: configuration.pcBeepSoundPreset)
+        pcBeepController.configure(soundPreset: preset, volume: configuration.pcBeepVolume)
+        updatePcBeep(for: latestMultimeterAlertState)
+    }
+
+    private func updatePcBeep(for alert: MeasurementAlertState) {
+        let shouldBeep = isDashboardBeepEnabled
+            && DashboardAlertService.shouldBeep(for: alert, configuration: configuration)
+        pcBeepController.setBeeping(shouldBeep)
+    }
+
+    private func persistConfigurationSilently() {
+        let config = configuration
+        Task { [configurationStore] in
+            try? await configurationStore.save(config)
+        }
+    }
+
+    private func appendRuntimeLogToUI(_ entry: RuntimeLogEntry) {
+        runtimeLogs.append(entry)
+        if runtimeLogs.count > 200 {
+            runtimeLogs.removeFirst(runtimeLogs.count - 200)
+        }
+    }
+
+    private func flushPendingRuntimeLogsToUI() {
+        guard !pendingRuntimeLogs.isEmpty else {
+            return
+        }
+
+        for entry in pendingRuntimeLogs {
+            appendRuntimeLogToUI(entry)
+        }
+        pendingRuntimeLogs.removeAll(keepingCapacity: true)
+    }
+
+    private func shouldCaptureRuntimeLog(level: RuntimeLogLevel) -> Bool {
+        if level == .info, !isRuntimeLogCaptureEnabled {
+            return false
+        }
+        return true
+    }
+
+    private func lastRuntimeLogEntry() -> RuntimeLogEntry? {
+        pendingRuntimeLogs.last ?? runtimeLogs.last
     }
 
     private func runtimeLogExportMetadata() -> [String] {
@@ -699,39 +915,161 @@ final class DashboardViewModel: ObservableObject {
         isFirstRunWizardPresented = true
     }
 
-    private func refreshDisplayedCharts(reason: String) {
-        let now = Date()
-        let multimeterPipeline = ChartPipelineService.process(
-            samples: multimeterSamples,
-            range: selectedChartRange,
-            now: now,
-            maxPoints: 280
-        )
-        let usbCPipeline = ChartPipelineService.process(
-            samples: usbcSamples,
-            range: selectedChartRange,
-            now: now,
-            maxPoints: 280
-        )
+    private func startUIRefreshLoop() {
+        guard uiRefreshTask == nil else {
+            return
+        }
 
-        displayedMultimeterSamples = multimeterPipeline.samples
-        displayedUsbCSamples = usbCPipeline.samples
-        displayedAlarmMarkers = alarmMarkersForDisplay(now: now)
-        displayedMultimeterConnectionMarkers = connectionMarkersForDisplay(device: "multimeter", now: now)
-        displayedUsbCConnectionMarkers = connectionMarkersForDisplay(device: "usbc", now: now)
+        let intervalNanos = UInt64(1_000_000_000 / max(1, uiRefreshCadenceHz))
+        uiRefreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: intervalNanos)
+                await MainActor.run {
+                    self?.processCoalescedUIRefreshTick(force: false)
+                }
+            }
+        }
+    }
+
+    private func markChartRefresh(
+        multimeter: Bool = false,
+        usbc: Bool = false,
+        markers: Bool = false,
+        reason: String
+    ) {
+        multimeterChartDirty = multimeterChartDirty || multimeter
+        usbCChartDirty = usbCChartDirty || usbc
+        chartMarkersDirty = chartMarkersDirty || markers
+        chartRefreshPending = true
+        pendingRefreshReasons.insert(reason)
+    }
+
+    private func processCoalescedUIRefreshTick(force: Bool) {
+        let hasPendingPresentation = pendingMultimeterSnapshot != nil || pendingUsbCSnapshot != nil || !pendingRuntimeLogs.isEmpty
+        let hasPendingCharts = chartRefreshPending
+        let hasWork = force || hasPendingPresentation || hasPendingCharts
+        guard hasWork else {
+            return
+        }
+
+        guard !isRenderPaused || force else {
+            skippedUIRefreshTicks += 1
+            return
+        }
+
+        appliedUIRefreshTicks += 1
+        applyPendingPresentationSnapshots()
+        flushPendingRuntimeLogsToUI()
+
+        if hasPendingCharts || force {
+            let reason = pendingRefreshReasons.sorted().joined(separator: ",")
+            refreshDisplayedCharts(reason: reason.isEmpty ? "coalesced" : reason, force: force)
+            pendingRefreshReasons.removeAll(keepingCapacity: true)
+            chartRefreshPending = false
+            multimeterChartDirty = false
+            usbCChartDirty = false
+            chartMarkersDirty = false
+        }
+    }
+
+    private func applyPendingPresentationSnapshots() {
+        if let snapshot = pendingMultimeterSnapshot {
+            multimeterPrimary = snapshot.primary
+            multimeterSecondary = snapshot.secondary
+            multimeterMode = snapshot.mode
+            multimeterAlert = snapshot.alertText
+            multimeterAlertState = snapshot.alertState
+            pendingMultimeterSnapshot = nil
+        }
+
+        if let snapshot = pendingUsbCSnapshot {
+            usbcVoltage = snapshot.voltage
+            usbcCurrent = snapshot.current
+            usbcPower = snapshot.power
+            usbcEnergy = snapshot.energy
+            pendingUsbCSnapshot = nil
+        }
+    }
+
+    private func refreshDisplayedCharts(reason: String, force: Bool) {
+        let now = Date()
+        let showMultimeter = deviceVisibility != .usbc
+        let showUsbC = deviceVisibility != .multimeter
+
+        if force || multimeterChartDirty {
+            if showMultimeter {
+                let multimeterPipeline = ChartPipelineService.process(
+                    samples: multimeterSamples,
+                    range: selectedChartRange,
+                    now: now,
+                    maxPoints: 280
+                )
+                displayedMultimeterSamples = multimeterPipeline.samples
+#if DEBUG
+                lastMultimeterPipelineMetric = multimeterPipeline.metric
+#endif
+            } else {
+                displayedMultimeterSamples = []
+#if DEBUG
+                lastMultimeterPipelineMetric = ChartPipelineMetric(
+                    sourcePointCount: multimeterSamples.count,
+                    filteredPointCount: 0,
+                    renderedPointCount: 0,
+                    processingMilliseconds: 0
+                )
+#endif
+            }
+        }
+
+        if force || usbCChartDirty {
+            if showUsbC {
+                let usbCPipeline = ChartPipelineService.process(
+                    samples: usbcSamples,
+                    range: selectedChartRange,
+                    now: now,
+                    maxPoints: 280
+                )
+                displayedUsbCSamples = usbCPipeline.samples
+#if DEBUG
+                lastUsbCPipelineMetric = usbCPipeline.metric
+#endif
+            } else {
+                displayedUsbCSamples = []
+#if DEBUG
+                lastUsbCPipelineMetric = ChartPipelineMetric(
+                    sourcePointCount: usbcSamples.count,
+                    filteredPointCount: 0,
+                    renderedPointCount: 0,
+                    processingMilliseconds: 0
+                )
+#endif
+            }
+        }
+
+        if force || chartMarkersDirty {
+            displayedAlarmMarkers = showMultimeter ? alarmMarkersForDisplay(now: now) : []
+            displayedMultimeterConnectionMarkers = showMultimeter
+                ? connectionMarkersForDisplay(device: "multimeter", now: now)
+                : []
+            displayedUsbCConnectionMarkers = showUsbC
+                ? connectionMarkersForDisplay(device: "usbc", now: now)
+                : []
+        }
 
 #if DEBUG
         chartPerformanceSummary = String(
-            format: "Pipeline %@ | MM %d→%d→%d (%.2fms) | USB-C %d→%d→%d (%.2fms)",
+            format: "Pipeline %@ | MM %d→%d→%d (%.2fms) | USB-C %d→%d→%d (%.2fms) | UI ticks %d applied / %d skipped",
             reason,
-            multimeterPipeline.metric.sourcePointCount,
-            multimeterPipeline.metric.filteredPointCount,
-            multimeterPipeline.metric.renderedPointCount,
-            multimeterPipeline.metric.processingMilliseconds,
-            usbCPipeline.metric.sourcePointCount,
-            usbCPipeline.metric.filteredPointCount,
-            usbCPipeline.metric.renderedPointCount,
-            usbCPipeline.metric.processingMilliseconds
+            lastMultimeterPipelineMetric.sourcePointCount,
+            lastMultimeterPipelineMetric.filteredPointCount,
+            lastMultimeterPipelineMetric.renderedPointCount,
+            lastMultimeterPipelineMetric.processingMilliseconds,
+            lastUsbCPipelineMetric.sourcePointCount,
+            lastUsbCPipelineMetric.filteredPointCount,
+            lastUsbCPipelineMetric.renderedPointCount,
+            lastUsbCPipelineMetric.processingMilliseconds,
+            appliedUIRefreshTicks,
+            skippedUIRefreshTicks
         )
 #endif
     }
@@ -807,10 +1145,11 @@ final class DashboardViewModel: ObservableObject {
     }
 
     private func makeDiagnosticsBundleInput() -> DiagnosticsBundleInput {
-        DiagnosticsBundleInput(
+        let exportedLogs = Array((runtimeLogs + pendingRuntimeLogs).suffix(500))
+        return DiagnosticsBundleInput(
             exportedAt: Date(),
             configuration: configuration,
-            runtimeLogs: Array(runtimeLogs.suffix(500)),
+            runtimeLogs: exportedLogs,
             healthSnapshots: Array(healthSnapshots.suffix(500)),
             connectionTimeline: Array(connectionTimeline.suffix(500)),
             multimeterStatus: multimeterStatus,
@@ -842,7 +1181,7 @@ final class DashboardViewModel: ObservableObject {
             chartConnectionTimeline.removeFirst(chartConnectionTimeline.count - 240)
         }
 
-        refreshDisplayedCharts(reason: "\(device)_status")
+        markChartRefresh(markers: true, reason: "\(device)_status")
         appendHealthSnapshot(reason: "\(device)_status")
     }
 
@@ -868,7 +1207,7 @@ final class DashboardViewModel: ObservableObject {
                 runtimeErrorCount: runtimeErrorCount,
                 parseErrorCount: parseErrorCount,
                 outputDropWarningCount: outputDropWarningCount,
-                runtimeLogCount: runtimeLogs.count,
+                runtimeLogCount: runtimeLogs.count + pendingRuntimeLogs.count,
                 statusMessage: statusMessage
             )
         )

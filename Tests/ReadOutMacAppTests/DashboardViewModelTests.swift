@@ -67,3 +67,40 @@ func restartRuntimeIgnoresRepeatedTrigger() {
 
     #expect(viewModel.statusMessage == "Recovery already in progress.")
 }
+
+@MainActor
+@Test
+func dashboardVisibilityPersistsToConfiguration() {
+    let viewModel = DashboardViewModel()
+
+    viewModel.setDeviceVisibility(.usbc)
+
+    #expect(viewModel.deviceVisibility == .usbc)
+    #expect(viewModel.configuration.dashboardDeviceVisibility == .usbc)
+}
+
+@MainActor
+@Test
+func dashboardBeepMasterToggleUpdatesConfiguration() {
+    let viewModel = DashboardViewModel()
+    let initial = viewModel.configuration.dashboardBeepMasterEnabled
+
+    viewModel.toggleDashboardBeep()
+
+    #expect(viewModel.isDashboardBeepEnabled != initial)
+    #expect(viewModel.configuration.dashboardBeepMasterEnabled == viewModel.isDashboardBeepEnabled)
+}
+
+@MainActor
+@Test
+func renderPauseToggleChangesStateAndStatus() {
+    let viewModel = DashboardViewModel()
+
+    viewModel.toggleRenderPause()
+    #expect(viewModel.isRenderPaused)
+    #expect(viewModel.statusMessage == "UI rendering paused")
+
+    viewModel.toggleRenderPause()
+    #expect(viewModel.isRenderPaused == false)
+    #expect(viewModel.statusMessage == "UI rendering resumed")
+}
