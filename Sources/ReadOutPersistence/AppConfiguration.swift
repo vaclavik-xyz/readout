@@ -1,6 +1,12 @@
 import Foundation
 
 public struct AppConfiguration: Sendable, Equatable {
+    public enum ObsOutputMode: String, Sendable, Equatable, Codable {
+        case valueOnly = "VALUE_ONLY"
+        case valueAndUnit = "VALUE_AND_UNIT"
+        case customTemplate = "CUSTOM_TEMPLATE"
+    }
+
     public var multimeterPort: String = ""
     public var usbcPort: String = ""
     public var multimeterEnabled: Bool = true
@@ -25,6 +31,8 @@ public struct AppConfiguration: Sendable, Equatable {
 
     public var multimeterOutputFile: String = ""
     public var usbcOutputFile: String = ""
+    public var multimeterObsOutputMode: ObsOutputMode = .valueAndUnit
+    public var usbcObsOutputMode: ObsOutputMode = .valueAndUnit
     public var multimeterObsCustomTemplate: String = "{value} {unit}"
     public var usbcObsCustomTemplate: String = "{voltage} {current} {power}"
     public var multimeterValueLabel: String = ""
@@ -66,6 +74,12 @@ public struct AppConfiguration: Sendable, Equatable {
             }
             return defaultValue
         }
+        func obsMode(_ key: String, default defaultValue: ObsOutputMode) -> ObsOutputMode {
+            guard let raw = data[key] as? String else {
+                return defaultValue
+            }
+            return ObsOutputMode(rawValue: raw.uppercased()) ?? defaultValue
+        }
 
         config.multimeterPort = string("multimeter_port", default: config.multimeterPort)
         config.usbcPort = string("usbc_port", default: config.usbcPort)
@@ -91,6 +105,8 @@ public struct AppConfiguration: Sendable, Equatable {
 
         config.multimeterOutputFile = string("multimeter_output_file", default: config.multimeterOutputFile)
         config.usbcOutputFile = string("usbc_output_file", default: config.usbcOutputFile)
+        config.multimeterObsOutputMode = obsMode("multimeter_obs_output_mode", default: config.multimeterObsOutputMode)
+        config.usbcObsOutputMode = obsMode("usbc_obs_output_mode", default: config.usbcObsOutputMode)
         config.multimeterObsCustomTemplate = string("multimeter_obs_custom_template", default: config.multimeterObsCustomTemplate)
         config.usbcObsCustomTemplate = string("usbc_obs_custom_template", default: config.usbcObsCustomTemplate)
         config.multimeterValueLabel = string("multimeter_value_label", default: config.multimeterValueLabel)
@@ -113,6 +129,9 @@ public struct AppConfiguration: Sendable, Equatable {
             if !legacyTemplate.isEmpty {
                 config.multimeterObsCustomTemplate = legacyTemplate
             }
+        }
+        if config.multimeterObsOutputMode == .valueAndUnit {
+            config.multimeterObsOutputMode = obsMode("obs_output_mode", default: config.multimeterObsOutputMode)
         }
         if config.multimeterValueLabel.isEmpty {
             config.multimeterValueLabel = string("value_label", default: "")
@@ -149,6 +168,8 @@ public struct AppConfiguration: Sendable, Equatable {
             "beep_on_alarm": beepOnAlarm,
             "multimeter_output_file": multimeterOutputFile,
             "usbc_output_file": usbcOutputFile,
+            "multimeter_obs_output_mode": multimeterObsOutputMode.rawValue,
+            "usbc_obs_output_mode": usbcObsOutputMode.rawValue,
             "multimeter_obs_custom_template": multimeterObsCustomTemplate,
             "usbc_obs_custom_template": usbcObsCustomTemplate,
             "multimeter_value_label": multimeterValueLabel,
