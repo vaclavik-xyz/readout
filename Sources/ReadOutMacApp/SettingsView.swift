@@ -9,6 +9,7 @@ struct SettingsView: View {
 
     let availablePorts: [String]
     let onRefreshPorts: () -> Void
+    let onOpenSetupWizard: () -> Void
     let onCancel: () -> Void
     let onSave: () -> Void
 
@@ -165,6 +166,11 @@ struct SettingsView: View {
         HStack {
             Button("Cancel") {
                 onCancel()
+            }
+            .buttonStyle(.bordered)
+
+            Button("Setup Wizard") {
+                onOpenSetupWizard()
             }
             .buttonStyle(.bordered)
 

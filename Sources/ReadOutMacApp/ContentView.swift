@@ -42,8 +42,26 @@ struct ContentView: View {
                 configuration: $viewModel.editableConfiguration,
                 availablePorts: viewModel.availablePorts,
                 onRefreshPorts: { viewModel.refreshPorts() },
+                onOpenSetupWizard: { viewModel.openFirstRunWizardFromSettings() },
                 onCancel: { viewModel.cancelSettings() },
                 onSave: { viewModel.saveSettings() }
+            )
+            .frame(minWidth: 760, minHeight: 620)
+        }
+        .sheet(isPresented: $viewModel.isFirstRunWizardPresented) {
+            FirstRunWizardView(
+                configuration: $viewModel.firstRunConfiguration,
+                availablePorts: viewModel.availablePorts,
+                probeResult: viewModel.firstRunProbeResult,
+                blockingIssues: viewModel.firstRunBlockingIssues,
+                reason: viewModel.firstRunReason,
+                canCancel: viewModel.canDismissFirstRunWizard,
+                onRescan: { viewModel.refreshFirstRunPorts() },
+                onApplyRecommendations: { viewModel.applyFirstRunRecommendations() },
+                onModeChanged: { viewModel.firstRunModeChanged() },
+                onConfigurationChanged: { viewModel.firstRunConfigurationDidChange() },
+                onCancel: { viewModel.dismissFirstRunWizard() },
+                onSave: { viewModel.saveFirstRunWizard() }
             )
             .frame(minWidth: 760, minHeight: 620)
         }
@@ -96,7 +114,7 @@ struct ContentView: View {
                 } else {
                     Button("Connect All") { viewModel.connectAll() }
                         .buttonStyle(.borderedProminent)
-                        .disabled(viewModel.isRecoveryInProgress)
+                        .disabled(viewModel.isRecoveryInProgress || !viewModel.canConnectAll)
                 }
             }
         }

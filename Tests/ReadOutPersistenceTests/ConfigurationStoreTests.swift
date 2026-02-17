@@ -13,6 +13,7 @@ func loadMissingFileReturnsDefaults() async throws {
     let configURL = uniqueTempURL("config.json")
     let store = ConfigurationStore(configFileURL: configURL)
 
+    #expect(await store.hasPersistedConfiguration() == false)
     let config = try await store.load()
     #expect(config.multimeterEnabled == true)
     #expect(config.usbcEnabled == false)
@@ -34,6 +35,7 @@ func saveAndLoadRoundTrip() async throws {
     config.multimeterCsvLogFilePath = "/tmp/mm.csv"
 
     try await store.save(config)
+    #expect(await store.hasPersistedConfiguration() == true)
     let loaded = try await store.load()
     #expect(loaded == config)
 }

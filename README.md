@@ -20,7 +20,7 @@ Project focus: speed, reliability, parser compatibility, and production-ready to
 
 ## Stack
 
-- Swift tools `6.2`
+- Swift tools `6.0`
 - SwiftUI + Charts (macOS app)
 - Swift Package Manager multi-target architecture
 - macOS-only target platform (`macOS 14+`)
@@ -87,10 +87,10 @@ Branch protection setup:
 
 ## Roadmap (Open)
 
-- `#9`: first-run setup wizard with serial auto-detection (open, intentionally deferred for now)
 - `#1`: v1 stabilization and production-readiness epic (final release validation + tagging)
 
 Completed recently:
+- `#9`: first-run setup wizard + serial auto-detection + connect preflight blocking
 - `#5`: alarm timeline markers + hover details + snapshot coverage
 - `#10`: high-density chart mode + reconnect overlays + pipeline performance instrumentation
 - `#8`: diagnostics bundle export

@@ -7,6 +7,10 @@ public actor ConfigurationStore {
         self.configFileURL = configFileURL
     }
 
+    public func hasPersistedConfiguration() -> Bool {
+        FileManager.default.fileExists(atPath: configFileURL.path)
+    }
+
     public func load() throws -> AppConfiguration {
         guard FileManager.default.fileExists(atPath: configFileURL.path) else {
             return AppConfiguration()

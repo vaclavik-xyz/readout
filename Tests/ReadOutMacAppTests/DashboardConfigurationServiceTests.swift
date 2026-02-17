@@ -55,3 +55,71 @@ func normalizedAssignsFirstHardwarePortWhenEmpty() {
     #expect(normalized.multimeterPort == "/dev/cu.usbmodem-1")
     #expect(normalized.usbcPort == "/dev/cu.usbmodem-1")
 }
+
+@Test
+func probePortsPrefersProfileSpecificCandidates() {
+    let service = DashboardConfigurationService()
+    let ports = [
+        SimulatedPort.multimeter,
+        SimulatedPort.usbC,
+        "/dev/cu.Bluetooth-Incoming-Port",
+        "/dev/cu.usbserial-1410",
+        "/dev/cu.usbmodem211"
+    ]
+
+    let probe = service.probePorts(ports)
+
+    #expect(probe.recommendedMultimeterPort == "/dev/cu.usbserial-1410")
+    #expect(probe.recommendedUsbCPort == "/dev/cu.usbmodem211")
+    #expect(probe.multimeterCandidates.isEmpty == false)
+    #expect(probe.usbcCandidates.isEmpty == false)
+}
+
+@Test
+func probePortsHandlesNoHardwareScenario() {
+    let service = DashboardConfigurationService()
+    let probe = service.probePorts([SimulatedPort.multimeter, SimulatedPort.usbC])
+
+    #expect(probe.recommendedMultimeterPort == nil)
+    #expect(probe.recommendedUsbCPort == nil)
+    #expect(probe.multimeterCandidates.isEmpty)
+    #expect(probe.usbcCandidates.isEmpty)
+}
+
+@Test
+func initialWizardConfigurationFallsBackToSimulatorWithoutHardwarePorts() {
+    let service = DashboardConfigurationService()
+    let config = service.initialWizardConfiguration(
+        availablePorts: [SimulatedPort.multimeter, SimulatedPort.usbC]
+    )
+
+    #expect(config.useSimulator)
+    #expect(config.multimeterPort == SimulatedPort.multimeter)
+    #expect(config.usbcPort == SimulatedPort.usbC)
+    #expect(config.multimeterEnabled)
+    #expect(config.usbcEnabled)
+}
+
+@Test
+func connectBlockingIssuesHandlePartialAndUnknownPorts() {
+    let service = DashboardConfigurationService()
+    let available = [
+        SimulatedPort.multimeter,
+        SimulatedPort.usbC,
+        "/dev/cu.usbserial-1410"
+    ]
+
+    var config = AppConfiguration()
+    config.useSimulator = false
+    config.multimeterEnabled = true
+    config.usbcEnabled = true
+    config.multimeterPort = "/dev/cu.usbserial-1410"
+    config.usbcPort = ""
+
+    let partialIssues = service.connectBlockingIssues(configuration: config, availablePorts: available)
+    #expect(partialIssues.contains("USB-C meter port is empty."))
+
+    config.usbcPort = "/dev/cu.unknown"
+    let unknownIssues = service.connectBlockingIssues(configuration: config, availablePorts: available)
+    #expect(unknownIssues.contains("USB-C meter port is not detected: /dev/cu.unknown"))
+}

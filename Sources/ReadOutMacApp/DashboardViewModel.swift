@@ -1,5 +1,6 @@
 import Foundation
 import ReadOutCore
+import ReadOutIO
 import ReadOutPersistence
 
 @MainActor
@@ -43,6 +44,19 @@ final class DashboardViewModel: ObservableObject {
     @Published var isSettingsPresented: Bool = false
     @Published var isRuntimeActive: Bool = false
     @Published var isRecoveryInProgress: Bool = false
+    @Published var isFirstRunWizardPresented: Bool = false
+    @Published var firstRunConfiguration: AppConfiguration = .init()
+    @Published private(set) var firstRunProbeResult: PortProbeResult = .empty
+    @Published private(set) var firstRunBlockingIssues: [String] = []
+    @Published private(set) var firstRunReason: String = ""
+
+    var canConnectAll: Bool {
+        connectBlockingIssues(for: configuration).isEmpty
+    }
+
+    var canDismissFirstRunWizard: Bool {
+        firstRunReason == "manual_from_settings"
+    }
 
     private let configurationService = DashboardConfigurationService()
     private let configurationStore: ConfigurationStore
@@ -82,6 +96,19 @@ final class DashboardViewModel: ObservableObject {
             setStatusMessage("Recovery in progress. Connect skipped.", level: .warning)
             return
         }
+        let blockingIssues = connectBlockingIssues(for: configuration)
+        guard blockingIssues.isEmpty else {
+            if let first = blockingIssues.first {
+                setStatusMessage("Connect blocked: \(first)", level: .warning)
+            } else {
+                setStatusMessage("Connect blocked by configuration.", level: .warning)
+            }
+            presentFirstRunWizard(
+                reason: "connect_blocked",
+                baseConfiguration: configuration
+            )
+            return
+        }
 
         Task {
             await runtime.start(with: configuration)
@@ -118,6 +145,10 @@ final class DashboardViewModel: ObservableObject {
 
         configuration = configurationService.normalized(configuration, availablePorts: discovered)
         editableConfiguration = configurationService.normalized(editableConfiguration, availablePorts: discovered)
+        if isFirstRunWizardPresented {
+            firstRunProbeResult = configurationService.probePorts(discovered)
+            firstRunBlockingIssues = connectBlockingIssues(for: firstRunConfiguration)
+        }
     }
 
     func openSettings() {
@@ -127,6 +158,123 @@ final class DashboardViewModel: ObservableObject {
 
     func cancelSettings() {
         isSettingsPresented = false
+    }
+
+    func openFirstRunWizardFromSettings() {
+        isSettingsPresented = false
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            guard let self else { return }
+            presentFirstRunWizard(
+                reason: "manual_from_settings",
+                baseConfiguration: self.configuration
+            )
+        }
+    }
+
+    func dismissFirstRunWizard() {
+        isFirstRunWizardPresented = false
+    }
+
+    func refreshFirstRunPorts() {
+        refreshPorts()
+        firstRunProbeResult = configurationService.probePorts(availablePorts)
+        firstRunBlockingIssues = connectBlockingIssues(for: firstRunConfiguration)
+    }
+
+    func applyFirstRunRecommendations() {
+        let probe = firstRunProbeResult
+
+        if let multimeterPort = probe.recommendedMultimeterPort {
+            firstRunConfiguration.useSimulator = false
+            firstRunConfiguration.multimeterPort = multimeterPort
+            firstRunConfiguration.multimeterEnabled = true
+        }
+
+        if let usbcPort = probe.recommendedUsbCPort {
+            firstRunConfiguration.usbcPort = usbcPort
+            firstRunConfiguration.usbcEnabled = true
+        } else if !firstRunConfiguration.useSimulator {
+            firstRunConfiguration.usbcEnabled = false
+            firstRunConfiguration.usbcPort = ""
+        }
+
+        if probe.recommendedMultimeterPort == nil {
+            firstRunConfiguration.useSimulator = true
+            firstRunConfiguration.multimeterPort = SimulatedPort.multimeter
+            firstRunConfiguration.usbcPort = SimulatedPort.usbC
+            firstRunConfiguration.multimeterEnabled = true
+            firstRunConfiguration.usbcEnabled = true
+        }
+
+        firstRunBlockingIssues = connectBlockingIssues(for: firstRunConfiguration)
+    }
+
+    func firstRunModeChanged() {
+        if firstRunConfiguration.useSimulator {
+            firstRunConfiguration.multimeterPort = SimulatedPort.multimeter
+            firstRunConfiguration.usbcPort = SimulatedPort.usbC
+            firstRunConfiguration.multimeterEnabled = true
+            firstRunConfiguration.usbcEnabled = true
+        } else {
+            if firstRunConfiguration.multimeterPort == SimulatedPort.multimeter {
+                firstRunConfiguration.multimeterPort = firstRunProbeResult.recommendedMultimeterPort ?? ""
+            }
+            if firstRunConfiguration.usbcPort == SimulatedPort.usbC {
+                firstRunConfiguration.usbcPort = firstRunProbeResult.recommendedUsbCPort ?? ""
+            }
+        }
+        firstRunBlockingIssues = connectBlockingIssues(for: firstRunConfiguration)
+    }
+
+    func firstRunConfigurationDidChange() {
+        firstRunBlockingIssues = connectBlockingIssues(for: firstRunConfiguration)
+    }
+
+    func saveFirstRunWizard() {
+        let newConfig = configurationService.normalized(firstRunConfiguration, availablePorts: availablePorts)
+        let blockingIssues = connectBlockingIssues(for: newConfig)
+        guard blockingIssues.isEmpty else {
+            firstRunBlockingIssues = blockingIssues
+            if let first = blockingIssues.first {
+                setStatusMessage("Setup blocked: \(first)", level: .warning)
+            }
+            return
+        }
+
+        let validation = AppConfigurationValidator.validate(newConfig)
+        if validation.hasErrors {
+            if let firstError = validation.issues.first(where: { $0.severity == .error }) {
+                setStatusMessage("Setup validation failed: \(firstError.message)", level: .error)
+            } else {
+                setStatusMessage("Setup validation failed.", level: .error)
+            }
+            return
+        }
+
+        configuration = newConfig
+        editableConfiguration = newConfig
+        firstRunConfiguration = newConfig
+        firstRunBlockingIssues = []
+        isFirstRunWizardPresented = false
+        trimChartsIfNeeded()
+        refreshDisplayedCharts(reason: "first_run_saved")
+
+        Task {
+            do {
+                try await configurationStore.save(newConfig)
+                await MainActor.run {
+                    setStatusMessage("Setup saved")
+                }
+                if isRuntimeActive {
+                    await runtime.start(with: newConfig)
+                }
+            } catch {
+                await MainActor.run {
+                    setStatusMessage("Failed to save setup: \(error.localizedDescription)", level: .error)
+                }
+            }
+        }
     }
 
     func clearCharts() {
@@ -248,17 +396,40 @@ final class DashboardViewModel: ObservableObject {
         await restorePersistedRuntimeLogs()
         refreshPorts()
 
+        let hasPersistedConfiguration = await configurationStore.hasPersistedConfiguration()
+        if !hasPersistedConfiguration {
+            let initial = configurationService.initialWizardConfiguration(availablePorts: availablePorts)
+            configuration = initial
+            editableConfiguration = initial
+            presentFirstRunWizard(reason: "missing_configuration", baseConfiguration: initial)
+            setStatusMessage("Welcome. Complete setup before connecting.", level: .warning)
+            appendHealthSnapshot(reason: "bootstrap_first_run")
+            refreshDisplayedCharts(reason: "bootstrap_first_run")
+            return
+        }
+
         do {
             let loaded = try await configurationStore.load()
             let normalized = configurationService.normalized(loaded, availablePorts: availablePorts)
 
             configuration = normalized
             editableConfiguration = normalized
-            setStatusMessage("Configuration loaded")
+            let validation = AppConfigurationValidator.validate(normalized)
+            let blockingIssues = connectBlockingIssues(for: normalized)
+            if blockingIssues.isEmpty && !validation.hasErrors {
+                setStatusMessage("Configuration loaded")
+            } else {
+                setStatusMessage("Configuration requires setup fixes.", level: .warning)
+                presentFirstRunWizard(reason: "invalid_configuration", baseConfiguration: normalized)
+            }
             appendHealthSnapshot(reason: "bootstrap_loaded")
             refreshDisplayedCharts(reason: "bootstrap_loaded")
         } catch {
-            setStatusMessage("Failed to load config: \(error.localizedDescription)", level: .error)
+            let fallback = configurationService.initialWizardConfiguration(availablePorts: availablePorts)
+            configuration = fallback
+            editableConfiguration = fallback
+            presentFirstRunWizard(reason: "load_failed", baseConfiguration: fallback)
+            setStatusMessage("Failed to load config. Setup wizard opened.", level: .error)
             appendHealthSnapshot(reason: "bootstrap_load_failed")
             refreshDisplayedCharts(reason: "bootstrap_load_failed")
         }
@@ -498,6 +669,34 @@ final class DashboardViewModel: ObservableObject {
             "Multimeter Port: \(multimeterPort)",
             "USB-C Port: \(usbcPort)"
         ]
+    }
+
+    private func connectBlockingIssues(for configuration: AppConfiguration) -> [String] {
+        configurationService.connectBlockingIssues(
+            configuration: configuration,
+            availablePorts: availablePorts
+        )
+    }
+
+    private func presentFirstRunWizard(reason: String, baseConfiguration: AppConfiguration?) {
+        firstRunReason = reason
+        firstRunProbeResult = configurationService.probePorts(availablePorts)
+
+        var draft = baseConfiguration
+            ?? configurationService.initialWizardConfiguration(availablePorts: availablePorts)
+
+        if !draft.useSimulator {
+            if draft.multimeterPort.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                draft.multimeterPort = firstRunProbeResult.recommendedMultimeterPort ?? ""
+            }
+            if draft.usbcPort.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                draft.usbcPort = firstRunProbeResult.recommendedUsbCPort ?? ""
+            }
+        }
+
+        firstRunConfiguration = configurationService.normalized(draft, availablePorts: availablePorts)
+        firstRunBlockingIssues = connectBlockingIssues(for: firstRunConfiguration)
+        isFirstRunWizardPresented = true
     }
 
     private func refreshDisplayedCharts(reason: String) {
