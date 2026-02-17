@@ -1,81 +1,91 @@
 # readOut
 
-Native macOS measurement app rewrite focused on speed, reliability, and clean UI.
+Native macOS app for realtime measurement workflows:
+- multimeter (SCPI-based)
+- USB-C power meter (streaming hex frames)
+
+Project focus: speed, reliability, parser compatibility, and production-ready tooling.
+
+## Current State
+
+`readOut` is already runnable and includes:
+- SwiftUI macOS dashboard (`ReadOutMacApp`) with dual device cards, charts, alerts, runtime logs, and settings.
+- Real device runtime + simulator mode (`SIM_MULTIMETER`, `SIM_USBC`).
+- Persistent JSON config with validation, migration from legacy keys, and path pickers.
+- CSV + OBS/text output sinks with bounded async write queues, retry, and backpressure telemetry.
+- Runtime recovery action, persistent log rotation/export, and diagnostics-oriented runtime log panel.
+- Deterministic soak/fault harness CLI (`ReadOutSoak`) with JSON summary output.
+- Fixture import/validation/drift tooling CLI (`ReadOutFixtureTool`) for parser regression control.
+- macOS GitHub Actions CI (build, test, fixture drift guard, smoke checks, nightly soak).
 
 ## Stack
-- Swift 6
-- SwiftUI (planned app layer)
-- Swift Charts (planned graph layer)
-- Swift Package modules for isolation and testability
 
-## Module Layout
-- `ReadOutCore`: parsing, domain models, deterministic business rules
-- `ReadOutIO`: serial/device session layer (next phase)
-- `ReadOutPersistence`: config/logging/output sinks (next phase)
+- Swift tools `6.2`
+- SwiftUI + Charts (macOS app)
+- Swift Package Manager multi-target architecture
+- macOS-only target platform (`macOS 14+`)
 
-## Current Status
-- Repository initialized
-- Core parsing rules migrated from the existing Python implementation:
-  - Multimeter mode parsing
-  - Multimeter numeric/overload parsing behavior
-  - USB-C 8-hex frame parsing behavior
-  - Energy accumulation math
-- Unit test baseline in place for parser compatibility
-- Explicit parser contract documented in `docs/parser-compatibility.md`
-- `ReadOutIO` now contains a tested async device session state machine:
-  - connect / read loop
-  - reconnect with backoff policy
-  - explicit stop lifecycle
-- Measurement pipelines added in `ReadOutIO`:
-  - multimeter mode-cache + parser pipeline
-  - USB-C frame pipeline with energy accumulation/reset
-- `ReadOutPersistence` now includes:
-  - JSON config store
-  - legacy key migration from Python config format
-  - value clamping during load for safer runtime behavior
-  - CSV logger and OBS/text output writers
-- `ReadOutIO` now includes real serial transport foundations:
-  - POSIX serial port implementation (open/configure/read/write line)
-  - streaming transport (USB-C style)
-  - SCPI polling transport with fallback query path (multimeter style)
-  - serial port discovery helper
-- high-level device drivers are now available:
-  - `MultimeterDeviceDriver` (mode refresh + SCPI polling + beeper verification)
-  - `UsbCDeviceDriver` (frame decoding + energy accumulation/reset)
-- fixture-driven parser compatibility tests are now in place
-  - fixture schema documented in `docs/fixture-format.md`
-- initial macOS SwiftUI app target exists:
-  - executable target `ReadOutMacApp`
-  - dashboard with live driver runtime + dual charts
-  - app runtime split into focused services (`ReadOutRuntime`, config/alert/beep helpers)
-  - settings sheet wired to persistent JSON config
-  - settings now include file pickers + inline validation
-  - serial port refresh + reconnect handling
-  - live CSV + OBS/text output wiring
-  - bounded async output queues (CSV/OBS) with backpressure telemetry
-  - built-in simulator mode (`SIM_MULTIMETER`, `SIM_USBC`) for no-hardware testing
-  - alarm rules (SHORT/OPEN/DCV high+low) with Mac beeper + meter beeper integration
-- soak/fault harness CLI is now available via `ReadOutSoak`:
-  - deterministic seeded fault injection (open fail, read fail, disconnect, slow-read windows)
-  - presets: `smoke`, `30m`, `2h`, `24h`
-  - machine-readable JSON summary artifact with reconnect/error/fault counters
-  - example:
-    - `swift run ReadOutSoak --preset smoke --seed 42 --output /tmp/readout-soak.json`
-- fixture import + parser drift guard CLI is now available via `ReadOutFixtureTool`:
-  - import multimeter and USB-C captures into fixture JSON
-  - validate fixture schema before test runs
-  - generate parser drift report against baseline fixtures
-  - runbook: `docs/fixture-capture-runbook.md`
+## Package Targets
 
-## Next Milestones
-1. Add real device capture fixtures (multimeter + USB-C) to expand compatibility matrix
-2. Add nightly CI soak monitoring + release readiness dashboard
-3. Add alarm visualization polish (per-state color accents and timeline markers)
-4. Add targeted app-layer tests for `DashboardViewModel` state transitions
+- `ReadOutCore`: parsing, domain models, alert rules, fixture/drift tooling primitives
+- `ReadOutIO`: serial transports, drivers, session state machine, soak/fault harness
+- `ReadOutPersistence`: config store, validation, CSV/OBS writers
+- `ReadOutMacApp`: desktop app UI + runtime orchestration
+- `ReadOutSoak`: soak/fault CLI
+- `ReadOutFixtureTool`: fixture import/validation/drift-report CLI
 
-## CI
-- GitHub Actions workflows:
-  - `.github/workflows/ci-macos.yml`
-  - `.github/workflows/nightly-soak.yml`
-- Branch protection setup guide:
-  - `docs/ci-branch-protection.md`
+## Quick Start
+
+### Run app
+```bash
+swift run ReadOutMacApp
+```
+
+### Run tests
+```bash
+swift test
+```
+
+### Run soak smoke preset
+```bash
+swift run ReadOutSoak --preset smoke --seed 42 --output /tmp/readout-soak.json
+```
+
+### Fixture tooling
+```bash
+swift run ReadOutFixtureTool validate-multimeter --input Tests/ReadOutCoreTests/Fixtures/multimeter_fixtures.json
+swift run ReadOutFixtureTool validate-usbc --input Tests/ReadOutCoreTests/Fixtures/usbc_frame_fixtures.json
+```
+
+## CI and Quality Gates
+
+Workflows:
+- `.github/workflows/ci-macos.yml`
+- `.github/workflows/nightly-soak.yml`
+
+CI enforces:
+- `swift build`
+- `swift test`
+- fixture schema validation + parser drift guard
+- soak smoke run
+- headless app startup smoke
+
+Branch protection setup:
+- `docs/ci-branch-protection.md`
+
+## Parser Compatibility and Fixtures
+
+- Parser contract: `docs/parser-compatibility.md`
+- Fixture format: `docs/fixture-format.md`
+- Capture/import runbook: `docs/fixture-capture-runbook.md`
+
+## Roadmap (Open)
+
+- `#9`: first-run setup wizard with serial auto-detection (open, intentionally not started now)
+- `#8`: diagnostics bundle export (logs + config + runtime health)
+- `#10`: high-density chart mode (downsampling + range controls)
+- `#5`: alarm timeline markers and chart context overlays
+
+## Repository
+
+- GitHub: <https://github.com/vaclavik-xyz/readout>
