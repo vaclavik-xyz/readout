@@ -10,7 +10,10 @@ func appStartupSmokeBootstrapsDashboardViewModel() async {
     let bootstrapped = await waitUntil(timeoutSeconds: 2.0) {
         let message = viewModel.statusMessage
         return message == "Configuration loaded"
+            || message == "Welcome. Complete setup before connecting."
+            || message == "Configuration requires setup fixes."
             || message.hasPrefix("Failed to load config:")
+            || message == "Failed to load config. Setup wizard opened."
     }
     #expect(bootstrapped == true)
 
