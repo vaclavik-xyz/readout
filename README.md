@@ -29,6 +29,10 @@ Native macOS measurement app rewrite focused on speed, reliability, and clean UI
 - Measurement pipelines added in `ReadOutIO`:
   - multimeter mode-cache + parser pipeline
   - USB-C frame pipeline with energy accumulation/reset
+- `ReadOutPersistence` now includes:
+  - JSON config store
+  - legacy key migration from Python config format
+  - value clamping during load for safer runtime behavior
 
 ## Next Milestones
 1. Add real serial transport implementation in `ReadOutIO`
