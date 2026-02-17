@@ -2,6 +2,9 @@ import Foundation
 import ReadOutCore
 import ReadOutIO
 import ReadOutPersistence
+#if canImport(AppKit)
+import AppKit
+#endif
 
 struct ChartSample: Identifiable {
     let id = UUID()
@@ -22,6 +25,52 @@ enum RuntimeEvent: Sendable {
     case multimeterMeasurement(DeviceMeasurement)
     case usbcMeasurement(DeviceMeasurement)
     case runtimeError(String)
+}
+
+final class PcBeepController {
+    private var task: Task<Void, Never>?
+    private let intervalSeconds: TimeInterval
+
+    init(intervalSeconds: TimeInterval = 0.7) {
+        self.intervalSeconds = intervalSeconds
+    }
+
+    deinit {
+        stop()
+    }
+
+    func setBeeping(_ enabled: Bool) {
+        if enabled {
+            start()
+        } else {
+            stop()
+        }
+    }
+
+    private func start() {
+        guard task == nil else {
+            return
+        }
+
+        let interval = intervalSeconds
+        task = Task {
+            while !Task.isCancelled {
+                #if canImport(AppKit)
+                await MainActor.run {
+                    NSSound.beep()
+                }
+                #endif
+
+                let nanos = UInt64(max(0, interval) * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: nanos)
+            }
+        }
+    }
+
+    private func stop() {
+        task?.cancel()
+        task = nil
+    }
 }
 
 actor ReadOutRuntime {
@@ -85,6 +134,7 @@ actor ReadOutRuntime {
     ) async {
         let reconnectEnabled = configuration.multimeterAutoReconnect
         let sampleIntervalSeconds = 1.0 / Double(max(1, configuration.sampleRateHz))
+        let alertConfiguration = configuration.alertConfiguration
 
         let csvLogger = CsvLogger()
         let obsWriter = ObsOutputWriter()
@@ -115,8 +165,19 @@ actor ReadOutRuntime {
                 let source = configuration.useSimulator ? "simulator" : configuration.multimeterPort
                 onEvent(.multimeterStatus(.connected, "Multimeter connected (\(source))"))
 
+                do {
+                    _ = try await driver.setBeeperEnabled(configuration.beepOnShortMeter)
+                } catch {
+                    onEvent(.runtimeError("Failed to set multimeter beeper: \(error.localizedDescription)"))
+                }
+
                 while !Task.isCancelled {
-                    if let measurement = try await driver.readMeasurement(at: Date()) {
+                    if let rawMeasurement = try await driver.readMeasurement(at: Date()) {
+                        let measurement = MeasurementAlertEvaluator.enrichMultimeter(
+                            measurement: rawMeasurement,
+                            configuration: alertConfiguration
+                        )
+
                         do {
                             try await handleMultimeterOutputs(
                                 measurement,
@@ -334,6 +395,33 @@ enum MeasurementDisplayFormatter {
     }
 }
 
+private extension AppConfiguration {
+    var alertConfiguration: MeasurementAlertConfiguration {
+        MeasurementAlertConfiguration(
+            shortThreshold: shortThreshold,
+            dcvHighAlarmEnabled: dcvHighAlarmEnabled,
+            dcvHighAlarmValue: dcvHighAlarmValue,
+            dcvLowAlarmEnabled: dcvLowAlarmEnabled,
+            dcvLowAlarmValue: dcvLowAlarmValue
+        )
+    }
+}
+
+private func alertText(_ alert: MeasurementAlertState) -> String {
+    switch alert {
+    case .none:
+        return "OK"
+    case .short:
+        return "SHORT"
+    case .open:
+        return "OPEN"
+    case .highAlarm:
+        return "HIGH ALARM"
+    case .lowAlarm:
+        return "LOW ALARM"
+    }
+}
+
 @MainActor
 final class DashboardViewModel: ObservableObject {
     @Published var multimeterStatus: DeviceUIState = .disconnected
@@ -342,6 +430,7 @@ final class DashboardViewModel: ObservableObject {
     @Published var multimeterPrimary: String = "---"
     @Published var multimeterSecondary: String = ""
     @Published var multimeterMode: String = "No Signal"
+    @Published var multimeterAlert: String = "OK"
 
     @Published var usbcVoltage: String = "---"
     @Published var usbcCurrent: String = "---"
@@ -359,6 +448,7 @@ final class DashboardViewModel: ObservableObject {
     @Published var isRuntimeActive: Bool = false
 
     private let configurationStore: ConfigurationStore
+    private let pcBeepController = PcBeepController()
 
     private lazy var runtime = ReadOutRuntime { [weak self] event in
         Task { @MainActor [weak self] in
@@ -394,6 +484,8 @@ final class DashboardViewModel: ObservableObject {
             await MainActor.run {
                 isRuntimeActive = false
                 statusMessage = "Disconnected"
+                multimeterAlert = "OK"
+                pcBeepController.setBeeping(false)
             }
         }
     }
@@ -470,6 +562,9 @@ final class DashboardViewModel: ObservableObject {
         switch event {
         case .multimeterStatus(let state, let message):
             multimeterStatus = state
+            if state == .disconnected || state == .error {
+                pcBeepController.setBeeping(false)
+            }
             if let message {
                 statusMessage = message
             }
@@ -487,6 +582,22 @@ final class DashboardViewModel: ObservableObject {
             multimeterPrimary = MeasurementDisplayFormatter.multimeterPrimary(measurement)
             multimeterSecondary = MeasurementDisplayFormatter.multimeterSecondary(measurement)
             multimeterMode = MeasurementDisplayFormatter.multimeterModeTitle(measurement)
+            let alert = MeasurementAlertEvaluator.evaluateMultimeter(
+                measurement: measurement,
+                configuration: configuration.alertConfiguration
+            )
+            multimeterAlert = alertText(alert)
+            if alert == .highAlarm {
+                statusMessage = "DC voltage above high alarm threshold"
+            } else if alert == .lowAlarm {
+                statusMessage = "DC voltage below low alarm threshold"
+            } else if alert == .short {
+                statusMessage = "SHORT condition detected"
+            }
+
+            let shortBeepActive = configuration.beepOnShortPC && alert == .short
+            let voltageAlarmActive = configuration.beepOnAlarm && (alert == .highAlarm || alert == .lowAlarm)
+            pcBeepController.setBeeping(shortBeepActive || voltageAlarmActive)
 
             if let value = measurement.primaryValue {
                 multimeterSamples.append(ChartSample(timestamp: measurement.timestamp, value: value))
@@ -541,6 +652,10 @@ final class DashboardViewModel: ObservableObject {
 
     private func normalizedConfiguration(_ raw: AppConfiguration) -> AppConfiguration {
         var config = raw
+
+        config.sampleRateHz = max(1, min(50, config.sampleRateHz))
+        config.graphHistorySeconds = max(5, min(600, config.graphHistorySeconds))
+        config.shortThreshold = max(0.1, config.shortThreshold)
 
         if config.useSimulator {
             config.multimeterPort = SimulatedPort.multimeter

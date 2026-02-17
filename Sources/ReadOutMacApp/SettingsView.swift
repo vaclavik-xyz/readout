@@ -49,6 +49,45 @@ struct SettingsView: View {
                     }
                 }
 
+                Section("Alarms & Beep") {
+                    HStack {
+                        Text("SHORT threshold")
+                        Spacer()
+                        TextField("Threshold", value: $configuration.shortThreshold, format: .number.precision(.fractionLength(1...3)))
+                            .frame(width: 90)
+                            .textFieldStyle(.roundedBorder)
+                        Text("Ω")
+                    }
+
+                    Toggle("Enable meter beeper for SHORT", isOn: $configuration.beepOnShortMeter)
+                    Toggle("Enable Mac beeper for SHORT", isOn: $configuration.beepOnShortPC)
+                    Toggle("Enable Mac beeper for DC voltage alarms", isOn: $configuration.beepOnAlarm)
+
+                    Toggle("High DC voltage alarm", isOn: $configuration.dcvHighAlarmEnabled)
+                    if configuration.dcvHighAlarmEnabled {
+                        HStack {
+                            Text("High threshold")
+                            Spacer()
+                            TextField("High", value: $configuration.dcvHighAlarmValue, format: .number.precision(.fractionLength(1...3)))
+                                .frame(width: 90)
+                                .textFieldStyle(.roundedBorder)
+                            Text("V")
+                        }
+                    }
+
+                    Toggle("Low DC voltage alarm", isOn: $configuration.dcvLowAlarmEnabled)
+                    if configuration.dcvLowAlarmEnabled {
+                        HStack {
+                            Text("Low threshold")
+                            Spacer()
+                            TextField("Low", value: $configuration.dcvLowAlarmValue, format: .number.precision(.fractionLength(1...3)))
+                                .frame(width: 90)
+                                .textFieldStyle(.roundedBorder)
+                            Text("V")
+                        }
+                    }
+                }
+
                 Section("Runtime") {
                     Toggle("Use simulator", isOn: $configuration.useSimulator)
                     Text("When enabled, app uses internal simulated ports SIM_MULTIMETER and SIM_USBC.")

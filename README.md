@@ -51,9 +51,10 @@ Native macOS measurement app rewrite focused on speed, reliability, and clean UI
   - serial port refresh + reconnect handling
   - live CSV + OBS/text output wiring
   - built-in simulator mode (`SIM_MULTIMETER`, `SIM_USBC`) for no-hardware testing
+  - alarm rules (SHORT/OPEN/DCV high+low) with Mac beeper + meter beeper integration
 
 ## Next Milestones
 1. Add real device capture fixtures (multimeter + USB-C) to expand compatibility matrix
 2. Add long-run soak tests for reconnect + serial fault scenarios
-3. Add alarm/beeper behavior parity from legacy Python app
-4. Add richer settings UX (file pickers + validation feedback)
+3. Add richer settings UX (file pickers + validation feedback)
+4. Add alarm visualization polish (per-state color accents and timeline markers)

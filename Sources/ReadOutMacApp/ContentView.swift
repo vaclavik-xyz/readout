@@ -106,9 +106,7 @@ struct ContentView: View {
                 primary: viewModel.multimeterPrimary,
                 secondary: viewModel.multimeterSecondary,
                 footerLeft: viewModel.multimeterMode,
-                footerRight: viewModel.configuration.multimeterPort.isEmpty
-                    ? "Port: n/a"
-                    : "Port: \(viewModel.configuration.multimeterPort)"
+                footerRight: "Alert: \(viewModel.multimeterAlert)"
             )
 
             deviceCard(
