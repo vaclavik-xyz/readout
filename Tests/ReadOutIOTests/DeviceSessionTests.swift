@@ -108,6 +108,26 @@ private func waitUntil(
     return false
 }
 
+private func almostEqual(_ lhs: TimeInterval, _ rhs: TimeInterval, epsilon: TimeInterval = 0.000_001) -> Bool {
+    abs(lhs - rhs) <= epsilon
+}
+
+@Test
+func reconnectPolicyDelayBackoffIsCapped() {
+    let policy = ReconnectPolicy(
+        enabled: true,
+        initialDelaySeconds: 0.1,
+        maxDelaySeconds: 0.25,
+        multiplier: 2
+    )
+
+    #expect(policy.delay(forAttempt: 0) == 0)
+    #expect(almostEqual(policy.delay(forAttempt: 1), 0.1))
+    #expect(almostEqual(policy.delay(forAttempt: 2), 0.2))
+    #expect(almostEqual(policy.delay(forAttempt: 3), 0.25))
+    #expect(almostEqual(policy.delay(forAttempt: 4), 0.25))
+}
+
 @Test
 func sessionReadsFramesWithoutReconnect() async {
     let recorder = EventRecorder()
@@ -233,4 +253,63 @@ func stopTransitionsSessionToDisconnected() async {
         await session.currentState() == .disconnected
     }
     #expect(disconnected == true)
+}
+
+@Test
+func sessionAppliesBackoffAcrossRepeatedOpenFailures() async {
+    let recorder = EventRecorder()
+    let sleeper = MockSleeper()
+    let transport = MockTransport(
+        openOutcomes: [
+            .failure(MockError(message: "open-fail-1")),
+            .failure(MockError(message: "open-fail-2")),
+            .failure(MockError(message: "open-fail-3")),
+            .success(())
+        ],
+        readOutcomes: [
+            .pause(seconds: 10)
+        ]
+    )
+
+    let config = DeviceSessionConfiguration(
+        reconnectPolicy: ReconnectPolicy(
+            enabled: true,
+            initialDelaySeconds: 0.1,
+            maxDelaySeconds: 0.25,
+            multiplier: 2
+        )
+    )
+
+    let session = DeviceSession(
+        id: "backoff-test",
+        transport: transport,
+        configuration: config,
+        sleeper: sleeper
+    ) { event in
+        Task { await recorder.append(event) }
+    }
+
+    await session.start()
+    let reachedThirdRetry = await waitUntil(timeoutSeconds: 2.0) {
+        await recorder.events().contains(.stateChanged(.waitingRetry(attempt: 3, delaySeconds: 0.25)))
+    }
+    #expect(reachedThirdRetry == true)
+
+    await session.stop()
+
+    let sleepCalls = await sleeper.recordedCalls()
+    #expect(sleepCalls.count >= 3)
+    #expect(almostEqual(sleepCalls[0], 0.1))
+    #expect(almostEqual(sleepCalls[1], 0.2))
+    #expect(almostEqual(sleepCalls[2], 0.25))
+
+    let events = await recorder.events()
+    #expect(events.contains(where: {
+        if case .transportError(let message) = $0 {
+            return message.contains("open-fail-1")
+                || message.contains("open-fail-2")
+                || message.contains("open-fail-3")
+        }
+        return false
+    }))
 }
