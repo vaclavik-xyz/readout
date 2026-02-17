@@ -95,17 +95,23 @@ Branch protection setup:
 ## Roadmap (Open)
 
 - `#1`: v1 stabilization and production-readiness epic (final release validation + tagging)
-- `#12`: render pause + throttled dashboard pipeline for high-rate hardware streams
-- `#13`: dashboard device visibility modes (Both / Multimeter / USB-C)
-- `#14`: runtime logs hide/disable controls in dashboard
-- `#15`: configurable Mac alert sound + dashboard beep master toggle
-- `#16`: theme selector (System / Light / Dark)
+- `#17`: adaptive dashboard refresh mode for high-rate streams (final hardware validation + threshold tuning)
+- `#22`: CI concurrency policy (no cancel on `main`, cancel on PR)
+- `#23`: automated nightly soak workflow with diagnostics artifacts
+- `#24`: runtime health panel with live performance counters
+- `#25`: alarm acknowledge and timed silence controls
+- `#26`: popout layout profiles for multi-monitor workflows
+- `#27`: runtime session capture and replay for regression debugging
 
 Completed recently:
 - `#9`: first-run setup wizard + serial auto-detection + connect preflight blocking
 - `#5`: alarm timeline markers + hover details + snapshot coverage
 - `#10`: high-density chart mode + reconnect overlays + pipeline performance instrumentation
 - `#8`: diagnostics bundle export
+- `#18`: popout display modes (mini/compact/detailed)
+- `#19`: popout window frame persistence (size/position restore)
+- `#20`: operator keyboard shortcuts (Cmd+1/2, Cmd+P, Cmd+L)
+- `#21`: popout alarm emphasis mode (optional, reduce-motion aware)
 
 ## Repository
 

@@ -4,11 +4,39 @@ on:
   schedule:
     - cron: "35 3 * * *"
   workflow_dispatch:
+    inputs:
+      preset:
+        description: "Soak preset"
+        required: false
+        default: "30m"
+        type: choice
+        options:
+          - smoke
+          - 30m
+          - 2h
+      seed:
+        description: "Deterministic seed override (optional)"
+        required: false
+        type: string
+      target_frames:
+        description: "Target frame override (optional)"
+        required: false
+        type: string
+      timeout_seconds:
+        description: "Timeout override in seconds (optional)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   soak-extended:
     runs-on: macos-latest
     timeout-minutes: 40
+    env:
+      CI_LOG_DIR: .ci-logs
 
     steps:
       - name: Checkout
@@ -22,22 +50,219 @@ jobs:
       - name: Show Swift Toolchain
         run: swift --version
 
-      - name: Run Extended Soak
+      - name: Resolve Soak Configuration
+        shell: bash
         run: |
+          set -euo pipefail
+          preset="${{ github.event.inputs.preset || '' }}"
+          if [[ -z "$preset" ]]; then
+            preset="30m"
+          fi
+
+          seed="${{ github.event.inputs.seed || '' }}"
+          if [[ -z "$seed" ]]; then
+            seed="${{ github.run_number }}"
+          fi
+
+          target_frames="${{ github.event.inputs.target_frames || '' }}"
+          timeout_seconds="${{ github.event.inputs.timeout_seconds || '' }}"
+
+          echo "SOAK_PRESET=$preset" >> "$GITHUB_ENV"
+          echo "SOAK_SEED=$seed" >> "$GITHUB_ENV"
+          echo "SOAK_TARGET_FRAMES=$target_frames" >> "$GITHUB_ENV"
+          echo "SOAK_TIMEOUT_SECONDS=$timeout_seconds" >> "$GITHUB_ENV"
+          echo "SOAK_SUMMARY_PATH=${CI_LOG_DIR}/nightly-soak-summary.json" >> "$GITHUB_ENV"
+          echo "SOAK_LOG_PATH=${CI_LOG_DIR}/nightly-soak.log" >> "$GITHUB_ENV"
+          echo "SOAK_TREND_PATH=${CI_LOG_DIR}/nightly-soak-trend.json" >> "$GITHUB_ENV"
+
+      - name: Run Soak
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${CI_LOG_DIR}"
+          cmd=(swift run ReadOutSoak --preset "${SOAK_PRESET}" --seed "${SOAK_SEED}" --output "${SOAK_SUMMARY_PATH}")
+
+          if [[ -n "${SOAK_TARGET_FRAMES}" ]]; then
+            cmd+=(--target-frames "${SOAK_TARGET_FRAMES}")
+          fi
+          if [[ -n "${SOAK_TIMEOUT_SECONDS}" ]]; then
+            cmd+=(--timeout-seconds "${SOAK_TIMEOUT_SECONDS}")
+          fi
+
+          printf 'Running soak command:'
+          printf ' %q' "${cmd[@]}"
+          printf '\n'
+
           set -o pipefail
-          mkdir -p .ci-logs
-          swift run ReadOutSoak \
-            --preset 30m \
-            --seed ${{ github.run_number }} \
-            --target-frames 6000 \
-            --timeout-seconds 1200 \
-            --output .ci-logs/nightly-soak-summary.json \
-            2>&1 | tee .ci-logs/nightly-soak.log
+          "${cmd[@]}" 2>&1 | tee "${SOAK_LOG_PATH}"
+
+      - name: Fetch Previous Successful Soak Artifact
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${CI_LOG_DIR}/previous"
+
+          runs_api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/nightly-soak.yml/runs?status=success&per_page=30"
+          prev_run_id="$(curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${runs_api}" \
+            | jq -r --argjson current "${GITHUB_RUN_ID}" '.workflow_runs[] | select(.id != $current) | .id' \
+            | head -n1)"
+
+          if [[ -z "${prev_run_id}" || "${prev_run_id}" == "null" ]]; then
+            echo "No previous successful nightly soak run found."
+            exit 0
+          fi
+
+          artifacts_api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${prev_run_id}/artifacts?per_page=100"
+          archive_url="$(curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${artifacts_api}" \
+            | jq -r '.artifacts[] | select(.name == "nightly-soak-results") | .archive_download_url' \
+            | head -n1)"
+
+          if [[ -z "${archive_url}" || "${archive_url}" == "null" ]]; then
+            echo "No previous nightly-soak-results artifact found for run ${prev_run_id}."
+            exit 0
+          fi
+
+          curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -L "${archive_url}" \
+            -o "${CI_LOG_DIR}/previous/nightly-soak-results.zip"
+
+          unzip -q "${CI_LOG_DIR}/previous/nightly-soak-results.zip" -d "${CI_LOG_DIR}/previous/unpacked"
+
+          prev_summary="$(find "${CI_LOG_DIR}/previous/unpacked" -name "nightly-soak-summary.json" -type f | head -n1)"
+          if [[ -n "${prev_summary}" ]]; then
+            cp "${prev_summary}" "${CI_LOG_DIR}/previous/nightly-soak-summary.json"
+            echo "Loaded previous soak summary from run ${prev_run_id}."
+          else
+            echo "Previous artifact did not contain nightly-soak-summary.json."
+          fi
+
+      - name: Build Nightly Trend Artifact
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${CI_LOG_DIR}"
+
+          if [[ ! -f "${SOAK_SUMMARY_PATH}" ]]; then
+            echo '{"error":"missing current soak summary"}' > "${SOAK_TREND_PATH}"
+            exit 0
+          fi
+
+          current_json="$(cat "${SOAK_SUMMARY_PATH}")"
+          previous_path="${CI_LOG_DIR}/previous/nightly-soak-summary.json"
+
+          if [[ -f "${previous_path}" ]]; then
+            previous_json="$(cat "${previous_path}")"
+            jq -n \
+              --arg generatedAt "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+              --arg repo "${GITHUB_REPOSITORY}" \
+              --arg workflow "${GITHUB_WORKFLOW}" \
+              --argjson runId "${GITHUB_RUN_ID}" \
+              --argjson runNumber "${GITHUB_RUN_NUMBER}" \
+              --arg ref "${GITHUB_REF}" \
+              --arg event "${GITHUB_EVENT_NAME}" \
+              --argjson current "${current_json}" \
+              --argjson previous "${previous_json}" \
+              '{
+                generatedAt: $generatedAt,
+                repository: $repo,
+                workflow: $workflow,
+                runId: $runId,
+                runNumber: $runNumber,
+                ref: $ref,
+                event: $event,
+                current: $current,
+                previous: $previous,
+                delta: {
+                  framesCaptured: ($current.framesCaptured - $previous.framesCaptured),
+                  transportErrors: ($current.transportErrors - $previous.transportErrors),
+                  reconnectAttempts: ($current.reconnectAttempts - $previous.reconnectAttempts),
+                  elapsedSeconds: ($current.elapsedSeconds - $previous.elapsedSeconds),
+                  passChanged: ($current.passed != $previous.passed)
+                }
+              }' > "${SOAK_TREND_PATH}"
+          else
+            jq -n \
+              --arg generatedAt "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+              --arg repo "${GITHUB_REPOSITORY}" \
+              --arg workflow "${GITHUB_WORKFLOW}" \
+              --argjson runId "${GITHUB_RUN_ID}" \
+              --argjson runNumber "${GITHUB_RUN_NUMBER}" \
+              --arg ref "${GITHUB_REF}" \
+              --arg event "${GITHUB_EVENT_NAME}" \
+              --argjson current "${current_json}" \
+              '{
+                generatedAt: $generatedAt,
+                repository: $repo,
+                workflow: $workflow,
+                runId: $runId,
+                runNumber: $runNumber,
+                ref: $ref,
+                event: $event,
+                current: $current,
+                previous: null,
+                delta: null
+              }' > "${SOAK_TREND_PATH}"
+          fi
+
+      - name: Publish Job Summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f "${SOAK_SUMMARY_PATH}" ]]; then
+            {
+              echo "## Nightly Soak"
+              echo ""
+              echo "No soak summary produced."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          passed="$(jq -r '.passed' "${SOAK_SUMMARY_PATH}")"
+          preset="${SOAK_PRESET}"
+          seed="$(jq -r '.seed' "${SOAK_SUMMARY_PATH}")"
+          frames="$(jq -r '.framesCaptured' "${SOAK_SUMMARY_PATH}")"
+          target="$(jq -r '.targetFrames' "${SOAK_SUMMARY_PATH}")"
+          errors="$(jq -r '.transportErrors' "${SOAK_SUMMARY_PATH}")"
+          reconnects="$(jq -r '.reconnectAttempts' "${SOAK_SUMMARY_PATH}")"
+          elapsed="$(jq -r '.elapsedSeconds' "${SOAK_SUMMARY_PATH}")"
+          failures="$(jq -r '.thresholdFailures | join("; ")' "${SOAK_SUMMARY_PATH}")"
+          if [[ -z "${failures}" ]]; then
+            failures="none"
+          fi
+
+          {
+            echo "## Nightly Soak"
+            echo ""
+            echo "- Preset: \`${preset}\`"
+            echo "- Seed: \`${seed}\`"
+            echo "- Passed: \`${passed}\`"
+            echo ""
+            echo "| Metric | Value |"
+            echo "|---|---|"
+            echo "| Frames | ${frames}/${target} |"
+            echo "| Transport errors | ${errors} |"
+            echo "| Reconnect attempts | ${reconnects} |"
+            echo "| Elapsed (s) | ${elapsed} |"
+            echo "| Threshold failures | ${failures} |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Soak Artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nightly-soak-${{ github.run_id }}
+          name: nightly-soak-results
           path: .ci-logs
           if-no-files-found: warn

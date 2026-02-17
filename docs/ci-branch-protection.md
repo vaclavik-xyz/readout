@@ -17,7 +17,9 @@ This gate enforces:
 Use workflow `Nightly Soak` as scheduled stability monitoring.
 
 - It runs deterministic seeded soak with fault injection.
-- It exports JSON + logs as downloadable artifacts.
+- It publishes job summary with pass/fail metrics.
+- It exports JSON + logs as downloadable artifacts (`nightly-soak-results`).
+- It builds trend artifact (`nightly-soak-trend.json`) with delta vs previous successful nightly run.
 - It fails when soak thresholds are exceeded.
 
 Nightly failures should be triaged before release tagging.
