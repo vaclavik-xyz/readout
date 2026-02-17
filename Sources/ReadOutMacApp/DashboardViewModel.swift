@@ -79,6 +79,10 @@ final class DashboardViewModel: ObservableObject {
     @Published var isRuntimeLogPanelVisible: Bool = true
     @Published var isRuntimeLogCaptureEnabled: Bool = true
     @Published var isDashboardBeepEnabled: Bool = true
+    @Published private(set) var isAlarmAcknowledged: Bool = false
+    @Published private(set) var isAlarmSilenced: Bool = false
+    @Published private(set) var alarmSilenceRemainingText: String = ""
+    @Published private(set) var alarmControlSummary: String = "Live"
     @Published var multimeterPopoutMode: DevicePopoutDisplayMode = .detailed
     @Published var usbcPopoutMode: DevicePopoutDisplayMode = .detailed
     @Published var isRenderPaused: Bool = false
@@ -110,6 +114,8 @@ final class DashboardViewModel: ObservableObject {
     private var parseErrorCount = 0
     private var outputDropWarningCount = 0
     private var latestMultimeterAlertState: MeasurementAlertState = .none
+    private var acknowledgedAlertState: MeasurementAlertState = .none
+    private var alarmSilencedUntil: Date?
     private var pendingMultimeterSnapshot: MultimeterPresentationSnapshot?
     private var pendingUsbCSnapshot: UsbCPresentationSnapshot?
     private var pendingRuntimeLogs: [RuntimeLogEntry] = []
@@ -171,6 +177,7 @@ final class DashboardViewModel: ObservableObject {
         configureBeepController()
         setStatusMessage("Config: \(configURL.path)")
         refreshRuntimeHealthBadges()
+        refreshAlarmControlState(now: Date(), emitStatusOnExpiry: false)
         startUIRefreshLoop()
         processCoalescedUIRefreshTick(force: true)
 
@@ -228,8 +235,11 @@ final class DashboardViewModel: ObservableObject {
                 multimeterAlert = "OK"
                 multimeterAlertState = .none
                 latestMultimeterAlertState = .none
+                acknowledgedAlertState = .none
+                isAlarmAcknowledged = false
                 pendingMultimeterSnapshot = nil
                 pendingUsbCSnapshot = nil
+                refreshAlarmControlState(now: Date(), emitStatusOnExpiry: false)
                 pcBeepController.setBeeping(false)
             }
         }
@@ -435,6 +445,52 @@ final class DashboardViewModel: ObservableObject {
         persistConfigurationSilently()
     }
 
+    var hasActiveAlarm: Bool {
+        latestMultimeterAlertState != .none
+    }
+
+    func toggleAlarmAcknowledge() {
+        guard latestMultimeterAlertState != .none || isAlarmAcknowledged else {
+            setStatusMessage("No active alarm to acknowledge", level: .warning)
+            return
+        }
+
+        if isAlarmAcknowledged {
+            isAlarmAcknowledged = false
+            acknowledgedAlertState = .none
+            setStatusMessage("Alarm acknowledge cleared")
+        } else {
+            isAlarmAcknowledged = true
+            acknowledgedAlertState = latestMultimeterAlertState
+            setStatusMessage("Alarm acknowledged (\(DashboardAlertService.text(for: latestMultimeterAlertState)))")
+        }
+
+        refreshAlarmControlState(now: Date(), emitStatusOnExpiry: false)
+        updatePcBeep(for: latestMultimeterAlertState)
+    }
+
+    func silenceAlarms(for seconds: TimeInterval) {
+        let clamped = max(0.1, seconds)
+        alarmSilencedUntil = Date().addingTimeInterval(clamped)
+        refreshAlarmControlState(now: Date(), emitStatusOnExpiry: false)
+        updatePcBeep(for: latestMultimeterAlertState)
+        setStatusMessage("Alarms silenced for \(formatSilenceDuration(clamped))")
+    }
+
+    func silenceAlarms(using preset: AlarmSilencePreset) {
+        silenceAlarms(for: preset.seconds)
+    }
+
+    func clearAlarmSilence() {
+        guard alarmSilencedUntil != nil || isAlarmSilenced else {
+            return
+        }
+        alarmSilencedUntil = nil
+        refreshAlarmControlState(now: Date(), emitStatusOnExpiry: false)
+        updatePcBeep(for: latestMultimeterAlertState)
+        setStatusMessage("Alarm silence cleared")
+    }
+
     func toggleRenderPause() {
         isRenderPaused.toggle()
         if isRenderPaused {
@@ -508,7 +564,10 @@ final class DashboardViewModel: ObservableObject {
         multimeterAlert = "OK"
         multimeterAlertState = .none
         latestMultimeterAlertState = .none
+        acknowledgedAlertState = .none
+        isAlarmAcknowledged = false
         pendingMultimeterSnapshot = nil
+        refreshAlarmControlState(now: Date(), emitStatusOnExpiry: false)
         updatePcBeep(for: .none)
         setStatusMessage("Visual state reset")
     }
@@ -722,6 +781,7 @@ final class DashboardViewModel: ObservableObject {
 
         let alert = DashboardAlertService.evaluate(measurement: measurement, configuration: configuration)
         latestMultimeterAlertState = alert
+        reconcileAlarmAcknowledge(previousAlert: previousAlert, currentAlert: alert)
         pendingMultimeterSnapshot = MultimeterPresentationSnapshot(
             primary: primary,
             secondary: secondary,
@@ -739,6 +799,7 @@ final class DashboardViewModel: ObservableObject {
             setStatusMessage(alertMessage, level: .warning)
         }
 
+        refreshAlarmControlState(now: Date(), emitStatusOnExpiry: true)
         updatePcBeep(for: alert)
 
         if let value = measurement.primaryValue {
@@ -820,8 +881,11 @@ final class DashboardViewModel: ObservableObject {
         multimeterAlert = "OK"
         multimeterAlertState = .none
         latestMultimeterAlertState = .none
+        acknowledgedAlertState = .none
+        isAlarmAcknowledged = false
         pendingMultimeterSnapshot = nil
         pendingUsbCSnapshot = nil
+        refreshAlarmControlState(now: Date(), emitStatusOnExpiry: false)
         setStatusMessage("Recovery: restarting runtime...", level: .warning)
 
         await runtime.start(with: configSnapshot)
@@ -933,12 +997,96 @@ final class DashboardViewModel: ObservableObject {
     }
 
     private func updatePcBeep(for alert: MeasurementAlertState) {
+        let isAcknowledgedForAlert = isAlarmAcknowledged
+            && acknowledgedAlertState == alert
+            && alert != .none
         let shouldBeep = DashboardAlertService.shouldBeep(
             for: alert,
             configuration: configuration,
-            dashboardBeepMasterEnabled: isDashboardBeepEnabled
+            dashboardBeepMasterEnabled: isDashboardBeepEnabled,
+            alarmMuted: isAlarmSilenced || isAcknowledgedForAlert
         )
         pcBeepController.setBeeping(shouldBeep)
+    }
+
+    private func reconcileAlarmAcknowledge(
+        previousAlert: MeasurementAlertState,
+        currentAlert: MeasurementAlertState
+    ) {
+        guard previousAlert != currentAlert else {
+            return
+        }
+
+        if currentAlert == .none {
+            isAlarmAcknowledged = false
+            acknowledgedAlertState = .none
+            return
+        }
+
+        if isAlarmAcknowledged, acknowledgedAlertState != currentAlert {
+            isAlarmAcknowledged = false
+            acknowledgedAlertState = .none
+        }
+    }
+
+    private func refreshAlarmControlState(now: Date, emitStatusOnExpiry: Bool) {
+        let wasSilenced = isAlarmSilenced
+
+        if let until = alarmSilencedUntil {
+            if now >= until {
+                alarmSilencedUntil = nil
+                isAlarmSilenced = false
+                alarmSilenceRemainingText = ""
+                if emitStatusOnExpiry && wasSilenced {
+                    setStatusMessage("Alarm silence expired")
+                }
+                updatePcBeep(for: latestMultimeterAlertState)
+            } else {
+                isAlarmSilenced = true
+                alarmSilenceRemainingText = formatRemainingSilence(until.timeIntervalSince(now))
+            }
+        } else {
+            isAlarmSilenced = false
+            alarmSilenceRemainingText = ""
+        }
+
+        if isAlarmAcknowledged, (latestMultimeterAlertState == .none || acknowledgedAlertState != latestMultimeterAlertState) {
+            isAlarmAcknowledged = false
+            acknowledgedAlertState = .none
+        }
+
+        let ackText = isAlarmAcknowledged
+            ? "Acked \(DashboardAlertService.text(for: acknowledgedAlertState))"
+            : nil
+        let silenceText = isAlarmSilenced
+            ? "Silenced \(alarmSilenceRemainingText)"
+            : nil
+        alarmControlSummary = [ackText, silenceText]
+            .compactMap { $0 }
+            .joined(separator: " | ")
+        if alarmControlSummary.isEmpty {
+            alarmControlSummary = "Live"
+        }
+    }
+
+    private func formatRemainingSilence(_ seconds: TimeInterval) -> String {
+        let rounded = max(0, Int(seconds.rounded(.up)))
+        let minutes = rounded / 60
+        let remainingSeconds = rounded % 60
+        return String(format: "%d:%02d", minutes, remainingSeconds)
+    }
+
+    private func formatSilenceDuration(_ seconds: TimeInterval) -> String {
+        let rounded = max(1, Int(seconds.rounded()))
+        let minutes = rounded / 60
+        let remainingSeconds = rounded % 60
+        if minutes == 0 {
+            return "\(remainingSeconds)s"
+        }
+        if remainingSeconds == 0 {
+            return "\(minutes)m"
+        }
+        return "\(minutes)m \(remainingSeconds)s"
     }
 
     private func persistConfigurationSilently() {
@@ -1050,6 +1198,7 @@ final class DashboardViewModel: ObservableObject {
 
     private func processCoalescedUIRefreshTick(force: Bool) {
         let now = Date()
+        refreshAlarmControlState(now: now, emitStatusOnExpiry: true)
         let hasPendingPresentation = pendingMultimeterSnapshot != nil || pendingUsbCSnapshot != nil || !pendingRuntimeLogs.isEmpty
         let hasPendingCharts = chartRefreshPending
         let hasWork = force || hasPendingPresentation || hasPendingCharts

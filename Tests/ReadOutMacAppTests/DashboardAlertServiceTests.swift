@@ -121,3 +121,27 @@ func alertServiceBeepPolicyHonorsMasterToggleAndSourceFlags() {
         ) == false
     )
 }
+
+@Test
+func alertServiceBeepPolicyHonorsAlarmMuteState() {
+    var config = AppConfiguration()
+    config.beepOnShortPC = true
+    config.beepOnAlarm = true
+
+    #expect(
+        DashboardAlertService.shouldBeep(
+            for: .short,
+            configuration: config,
+            dashboardBeepMasterEnabled: true,
+            alarmMuted: true
+        ) == false
+    )
+    #expect(
+        DashboardAlertService.shouldBeep(
+            for: .highAlarm,
+            configuration: config,
+            dashboardBeepMasterEnabled: true,
+            alarmMuted: true
+        ) == false
+    )
+}

@@ -269,6 +269,36 @@ struct RuntimeHealthBadge: Identifiable, Sendable, Equatable {
     let severity: RuntimeHealthSeverity
 }
 
+enum AlarmSilencePreset: String, Sendable, CaseIterable, Identifiable {
+    case oneMinute
+    case fiveMinutes
+    case fifteenMinutes
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .oneMinute:
+            return "Silence 1m"
+        case .fiveMinutes:
+            return "Silence 5m"
+        case .fifteenMinutes:
+            return "Silence 15m"
+        }
+    }
+
+    var seconds: TimeInterval {
+        switch self {
+        case .oneMinute:
+            return 60
+        case .fiveMinutes:
+            return 5 * 60
+        case .fifteenMinutes:
+            return 15 * 60
+        }
+    }
+}
+
 enum DevicePopoutDisplayMode: String, Sendable, CaseIterable, Identifiable {
     case mini
     case compact

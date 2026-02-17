@@ -326,3 +326,54 @@ func runtimeHealthBadgeShowsUiWarningDuringPause() {
     let uiBadge = viewModel.runtimeHealthBadges.first(where: { $0.id == "ui_refresh" })
     #expect(uiBadge?.severity == .warning)
 }
+
+@MainActor
+@Test
+func timedAlarmSilenceExpiresAutomatically() async {
+    let viewModel = DashboardViewModel()
+
+    viewModel.silenceAlarms(for: 0.2)
+    #expect(viewModel.isAlarmSilenced)
+    #expect(viewModel.alarmControlSummary.contains("Silenced"))
+
+    try? await Task.sleep(nanoseconds: 520_000_000)
+
+    #expect(viewModel.isAlarmSilenced == false)
+    #expect(viewModel.alarmControlSummary == "Live")
+}
+
+@MainActor
+@Test
+func acknowledgeClearsWhenAlertTransitionsToDifferentState() {
+    let viewModel = DashboardViewModel()
+
+    let shortMeasurement = DeviceMeasurement(
+        device: .multimeter,
+        mode: .continuity,
+        modeString: "CONT",
+        primaryValue: 0.3,
+        primaryUnit: "ohm",
+        isOverload: false,
+        isOpen: false,
+        isShort: true
+    )
+    viewModel.debugInjectMultimeterMeasurement(shortMeasurement)
+    viewModel.toggleAlarmAcknowledge()
+    #expect(viewModel.isAlarmAcknowledged)
+    #expect(viewModel.alarmControlSummary.contains("Acked"))
+
+    viewModel.configuration.dcvHighAlarmEnabled = true
+    viewModel.configuration.dcvHighAlarmValue = 5.0
+
+    let highAlarmMeasurement = DeviceMeasurement(
+        device: .multimeter,
+        mode: .dcVoltage,
+        modeString: "VOLT:DC",
+        primaryValue: 7.2,
+        primaryUnit: "V DC"
+    )
+    viewModel.debugInjectMultimeterMeasurement(highAlarmMeasurement)
+
+    #expect(viewModel.isAlarmAcknowledged == false)
+    #expect(viewModel.alarmControlSummary == "Live")
+}

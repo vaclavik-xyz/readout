@@ -120,6 +120,29 @@ struct ContentView: View {
                 }
 
                 HStack(spacing: 8) {
+                    Menu("Alarm") {
+                        Button(viewModel.isAlarmAcknowledged ? "Clear Acknowledge" : "Acknowledge Active Alarm") {
+                            viewModel.toggleAlarmAcknowledge()
+                        }
+                        .disabled(!viewModel.hasActiveAlarm && !viewModel.isAlarmAcknowledged)
+
+                        Divider()
+
+                        ForEach(AlarmSilencePreset.allCases) { preset in
+                            Button(preset.title) {
+                                viewModel.silenceAlarms(using: preset)
+                            }
+                        }
+
+                        if viewModel.isAlarmSilenced {
+                            Divider()
+                            Button("Unsilence") {
+                                viewModel.clearAlarmSilence()
+                            }
+                        }
+                    }
+                    .menuStyle(.borderlessButton)
+
                     Button(viewModel.isDashboardBeepEnabled ? "Beep On" : "Beep Off") {
                         viewModel.toggleDashboardBeep()
                     }
@@ -209,6 +232,13 @@ struct ContentView: View {
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(palette.tertiaryText)
                 .lineLimit(1)
+
+            if viewModel.alarmControlSummary != "Live" {
+                Text("Alarm: \(viewModel.alarmControlSummary)")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(viewModel.isAlarmSilenced ? .yellow : .mint)
+                    .lineLimit(1)
+            }
 
             if viewModel.isRenderPaused {
                 Text("UI Paused")

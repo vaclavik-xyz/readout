@@ -211,6 +211,14 @@ private struct DevicePopoutView: View {
                         scale: scale
                     )
                 }
+                if let alarmStatusText {
+                    Text(alarmStatusText)
+                        .font(.system(size: max(10, 10 * scale), weight: .bold, design: .rounded))
+                        .foregroundStyle(alarmStatusColor)
+                        .padding(.horizontal, 8 * scale)
+                        .padding(.vertical, 4 * scale)
+                        .background(alarmStatusColor.opacity(0.16), in: Capsule())
+                }
                 content(for: displayMode, scale: scale)
             }
             .padding(14 * scale)
@@ -336,6 +344,18 @@ private struct DevicePopoutView: View {
         case .compact, .detailed:
             return 17
         }
+    }
+
+    private var alarmStatusText: String? {
+        let summary = viewModel.alarmControlSummary
+        guard summary != "Live" else {
+            return nil
+        }
+        return "Alarm: \(summary)"
+    }
+
+    private var alarmStatusColor: Color {
+        viewModel.isAlarmSilenced ? .yellow : .mint
     }
 
     @ViewBuilder
