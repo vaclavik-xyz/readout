@@ -1,0 +1,38 @@
+name: Nightly Soak
+
+on:
+  schedule:
+    - cron: "35 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  soak-extended:
+    runs-on: macos-14
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Swift Toolchain
+        run: swift --version
+
+      - name: Run Extended Soak
+        run: |
+          set -o pipefail
+          mkdir -p .ci-logs
+          swift run ReadOutSoak \
+            --preset 30m \
+            --seed ${{ github.run_number }} \
+            --target-frames 6000 \
+            --timeout-seconds 1200 \
+            --output .ci-logs/nightly-soak-summary.json \
+            2>&1 | tee .ci-logs/nightly-soak.log
+
+      - name: Upload Soak Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-soak-${{ github.run_id }}
+          path: .ci-logs
+          if-no-files-found: warn

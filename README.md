@@ -64,6 +64,13 @@ Native macOS measurement app rewrite focused on speed, reliability, and clean UI
 
 ## Next Milestones
 1. Add real device capture fixtures (multimeter + USB-C) to expand compatibility matrix
-2. Add long-run soak tests for reconnect + serial fault scenarios
+2. Add nightly CI soak monitoring + release readiness dashboard
 3. Add alarm visualization polish (per-state color accents and timeline markers)
 4. Add targeted app-layer tests for `DashboardViewModel` state transitions
+
+## CI
+- GitHub Actions workflows:
+  - `.github/workflows/ci-macos.yml`
+  - `.github/workflows/nightly-soak.yml`
+- Branch protection setup guide:
+  - `docs/ci-branch-protection.md`

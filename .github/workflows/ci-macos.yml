@@ -1,0 +1,59 @@
+name: macOS CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test-smoke:
+    runs-on: macos-14
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Swift Toolchain
+        run: swift --version
+
+      - name: Build
+        run: |
+          set -o pipefail
+          mkdir -p .ci-logs
+          swift build 2>&1 | tee .ci-logs/swift-build.log
+
+      - name: Test
+        run: |
+          set -o pipefail
+          swift test 2>&1 | tee .ci-logs/swift-test.log
+
+      - name: Runtime Smoke (ReadOutSoak)
+        run: |
+          set -o pipefail
+          swift run ReadOutSoak \
+            --preset smoke \
+            --seed 42 \
+            --target-frames 400 \
+            --timeout-seconds 40 \
+            --output .ci-logs/soak-smoke-summary.json \
+            2>&1 | tee .ci-logs/soak-smoke.log
+
+      - name: App Startup Smoke (Headless)
+        run: |
+          set -o pipefail
+          swift test --filter appStartupSmokeBootstrapsDashboardViewModel \
+            2>&1 | tee .ci-logs/readout-macapp-smoke.log
+
+      - name: Upload CI Logs on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-ci-logs-${{ github.run_id }}
+          path: .ci-logs
+          if-no-files-found: warn
