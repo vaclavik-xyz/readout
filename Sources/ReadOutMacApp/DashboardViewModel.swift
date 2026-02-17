@@ -11,6 +11,7 @@ final class DashboardViewModel: ObservableObject {
     @Published var multimeterSecondary: String = ""
     @Published var multimeterMode: String = "No Signal"
     @Published var multimeterAlert: String = "OK"
+    @Published var multimeterAlertState: MeasurementAlertState = .none
 
     @Published var usbcVoltage: String = "---"
     @Published var usbcCurrent: String = "---"
@@ -66,6 +67,7 @@ final class DashboardViewModel: ObservableObject {
                 isRuntimeActive = false
                 statusMessage = "Disconnected"
                 multimeterAlert = "OK"
+                multimeterAlertState = .none
                 pcBeepController.setBeeping(false)
             }
         }
@@ -173,6 +175,7 @@ final class DashboardViewModel: ObservableObject {
 
         let alert = DashboardAlertService.evaluate(measurement: measurement, configuration: configuration)
         multimeterAlert = DashboardAlertService.text(for: alert)
+        multimeterAlertState = alert
 
         if let alertMessage = DashboardAlertService.statusMessage(for: alert) {
             statusMessage = alertMessage

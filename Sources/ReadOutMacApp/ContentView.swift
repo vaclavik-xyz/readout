@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import ReadOutCore
 
 struct ContentView: View {
     @ObservedObject var viewModel: DashboardViewModel
@@ -106,7 +107,8 @@ struct ContentView: View {
                 primary: viewModel.multimeterPrimary,
                 secondary: viewModel.multimeterSecondary,
                 footerLeft: viewModel.multimeterMode,
-                footerRight: "Alert: \(viewModel.multimeterAlert)"
+                footerRight: "Alert: \(viewModel.multimeterAlert)",
+                alertState: viewModel.multimeterAlertState
             )
 
             deviceCard(
@@ -115,7 +117,8 @@ struct ContentView: View {
                 primary: viewModel.usbcVoltage,
                 secondary: viewModel.usbcCurrent,
                 footerLeft: viewModel.usbcPower,
-                footerRight: viewModel.usbcEnergy
+                footerRight: viewModel.usbcEnergy,
+                alertState: nil
             )
         }
     }
@@ -125,12 +128,20 @@ struct ContentView: View {
             chartCard(
                 title: "Multimeter Trend",
                 color: .mint,
-                samples: viewModel.multimeterSamples
+                samples: viewModel.multimeterSamples,
+                highThreshold: viewModel.configuration.dcvHighAlarmEnabled
+                    ? viewModel.configuration.dcvHighAlarmValue
+                    : nil,
+                lowThreshold: viewModel.configuration.dcvLowAlarmEnabled
+                    ? viewModel.configuration.dcvLowAlarmValue
+                    : nil
             )
             chartCard(
                 title: "USB-C Power Trend",
                 color: .orange,
-                samples: viewModel.usbcSamples
+                samples: viewModel.usbcSamples,
+                highThreshold: nil,
+                lowThreshold: nil
             )
         }
     }
@@ -141,15 +152,21 @@ struct ContentView: View {
         primary: String,
         secondary: String,
         footerLeft: String,
-        footerRight: String
+        footerRight: String,
+        alertState: MeasurementAlertState?
     ) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        let accent = alertAccentColor(alertState)
+
+        return VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text(title)
                     .font(.system(size: 18, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                 Spacer()
                 statusPill(status)
+                if let alertState, alertState != .none {
+                    alertPill(alertState)
+                }
             }
             Text(primary)
                 .font(.system(size: 44, weight: .black, design: .rounded))
@@ -175,12 +192,18 @@ struct ContentView: View {
                 .fill(.ultraThinMaterial)
                 .overlay(
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(.white.opacity(0.14), lineWidth: 1)
+                        .stroke(accent.opacity(0.9), lineWidth: 1.5)
                 )
         )
     }
 
-    private func chartCard(title: String, color: Color, samples: [ChartSample]) -> some View {
+    private func chartCard(
+        title: String,
+        color: Color,
+        samples: [ChartSample],
+        highThreshold: Double?,
+        lowThreshold: Double?
+    ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.system(size: 15, weight: .bold, design: .rounded))
@@ -207,6 +230,18 @@ struct ContentView: View {
                         endPoint: .bottom
                     )
                 )
+
+                if let highThreshold {
+                    RuleMark(y: .value("High Alarm", highThreshold))
+                        .foregroundStyle(.red.opacity(0.8))
+                        .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [6, 4]))
+                }
+
+                if let lowThreshold {
+                    RuleMark(y: .value("Low Alarm", lowThreshold))
+                        .foregroundStyle(.yellow.opacity(0.8))
+                        .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [6, 4]))
+                }
             }
             .chartYAxis {
                 AxisMarks(position: .leading)
@@ -239,5 +274,33 @@ struct ContentView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .background(color, in: Capsule())
+    }
+
+    private func alertAccentColor(_ alertState: MeasurementAlertState?) -> Color {
+        guard let alertState else {
+            return .white.opacity(0.14)
+        }
+
+        switch alertState {
+        case .none:
+            return .white.opacity(0.14)
+        case .short:
+            return .orange
+        case .open:
+            return .pink
+        case .highAlarm:
+            return .red
+        case .lowAlarm:
+            return .yellow
+        }
+    }
+
+    private func alertPill(_ alertState: MeasurementAlertState) -> some View {
+        Text(DashboardAlertService.text(for: alertState))
+            .font(.system(size: 10, weight: .black, design: .rounded))
+            .foregroundStyle(.black.opacity(0.85))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(alertAccentColor(alertState), in: Capsule())
     }
 }
