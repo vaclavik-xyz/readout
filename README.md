@@ -46,10 +46,13 @@ Native macOS measurement app rewrite focused on speed, reliability, and clean UI
   - fixture schema documented in `docs/fixture-format.md`
 - initial macOS SwiftUI app target exists:
   - executable target `ReadOutMacApp`
-  - dashboard scaffold with dual cards and charts
+  - dashboard with live driver runtime + dual charts
+  - settings sheet wired to persistent JSON config
+  - serial port refresh + reconnect handling
+  - live CSV + OBS/text output wiring
 
 ## Next Milestones
 1. Add real device capture fixtures (multimeter + USB-C) to expand compatibility matrix
-2. Wire real drivers/transports into the SwiftUI app
-3. Add settings panel and persist edits to config store
-4. Add long-run soak tests for reconnect + serial fault scenarios
+2. Add long-run soak tests for reconnect + serial fault scenarios
+3. Add alarm/beeper behavior parity from legacy Python app
+4. Add richer settings UX (file pickers + validation feedback)

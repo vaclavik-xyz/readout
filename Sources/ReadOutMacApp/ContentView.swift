@@ -18,10 +18,21 @@ struct ContentView: View {
 
             VStack(spacing: 16) {
                 header
+                statusStrip
                 cards
                 charts
             }
             .padding(20)
+        }
+        .sheet(isPresented: $viewModel.isSettingsPresented) {
+            SettingsView(
+                configuration: $viewModel.editableConfiguration,
+                availablePorts: viewModel.availablePorts,
+                onRefreshPorts: { viewModel.refreshPorts() },
+                onCancel: { viewModel.cancelSettings() },
+                onSave: { viewModel.saveSettings() }
+            )
+            .frame(minWidth: 760, minHeight: 620)
         }
     }
 
@@ -36,15 +47,51 @@ struct ContentView: View {
                     .foregroundStyle(.white.opacity(0.7))
             }
             Spacer()
+
             HStack(spacing: 8) {
-                Button("Connect All") { viewModel.connectAll() }
-                    .buttonStyle(.borderedProminent)
-                Button("Disconnect") { viewModel.disconnectAll() }
+                Button("Refresh Ports") { viewModel.refreshPorts() }
                     .buttonStyle(.bordered)
+
+                Button("Settings") { viewModel.openSettings() }
+                    .buttonStyle(.bordered)
+
+                if viewModel.isRuntimeActive {
+                    Button("Disconnect") { viewModel.disconnectAll() }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red)
+                } else {
+                    Button("Connect All") { viewModel.connectAll() }
+                        .buttonStyle(.borderedProminent)
+                }
             }
         }
         .padding(16)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var statusStrip: some View {
+        HStack(spacing: 10) {
+            Label(viewModel.statusMessage, systemImage: "waveform.path.ecg")
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.85))
+                .lineLimit(1)
+
+            Spacer()
+
+            Text("Ports: \(viewModel.availablePorts.count)")
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.6))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(.white.opacity(0.08), lineWidth: 1)
+                )
+        )
     }
 
     private var cards: some View {
@@ -55,7 +102,9 @@ struct ContentView: View {
                 primary: viewModel.multimeterPrimary,
                 secondary: viewModel.multimeterSecondary,
                 footerLeft: viewModel.multimeterMode,
-                footerRight: "Target: SCPI"
+                footerRight: viewModel.configuration.multimeterPort.isEmpty
+                    ? "Port: n/a"
+                    : "Port: \(viewModel.configuration.multimeterPort)"
             )
 
             deviceCard(
