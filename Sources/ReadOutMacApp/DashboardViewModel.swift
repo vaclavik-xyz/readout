@@ -38,7 +38,7 @@ actor ReadOutRuntime {
         await stop()
 
         if configuration.multimeterEnabled {
-            if configuration.multimeterPort.isEmpty {
+            if !configuration.useSimulator && configuration.multimeterPort.isEmpty {
                 onEvent(.multimeterStatus(.error, "Multimeter port is empty"))
             } else {
                 multimeterTask = Task { [configuration, onEvent] in
@@ -50,7 +50,7 @@ actor ReadOutRuntime {
         }
 
         if configuration.usbcEnabled {
-            if configuration.usbcPort.isEmpty {
+            if !configuration.useSimulator && configuration.usbcPort.isEmpty {
                 onEvent(.usbcStatus(.error, "USB-C port is empty"))
             } else {
                 usbcTask = Task { [configuration, onEvent] in
@@ -93,21 +93,27 @@ actor ReadOutRuntime {
         while !Task.isCancelled {
             onEvent(.multimeterStatus(.connecting, nil))
 
-            let lineIO = POSIXSerialPort(
-                configuration: SerialPortConfiguration(
-                    path: configuration.multimeterPort,
-                    baudRate: 115_200,
-                    readTimeoutSeconds: 0.15,
-                    writeTimeoutSeconds: 0.15
+            let transport: any SCPITransport
+            if configuration.useSimulator {
+                transport = SimulatedSCPITransport(sampleRateHz: configuration.sampleRateHz)
+            } else {
+                let lineIO = POSIXSerialPort(
+                    configuration: SerialPortConfiguration(
+                        path: configuration.multimeterPort,
+                        baudRate: 115_200,
+                        readTimeoutSeconds: 0.15,
+                        writeTimeoutSeconds: 0.15
+                    )
                 )
-            )
-            let transport = SCPIPollingTransport(lineIO: lineIO)
+                transport = SCPIPollingTransport(lineIO: lineIO)
+            }
             let driver = MultimeterDeviceDriver(transport: transport)
 
             do {
                 try await driver.connect()
                 reconnectAttempt = 0
-                onEvent(.multimeterStatus(.connected, "Multimeter connected"))
+                let source = configuration.useSimulator ? "simulator" : configuration.multimeterPort
+                onEvent(.multimeterStatus(.connected, "Multimeter connected (\(source))"))
 
                 while !Task.isCancelled {
                     if let measurement = try await driver.readMeasurement(at: Date()) {
@@ -159,21 +165,27 @@ actor ReadOutRuntime {
         while !Task.isCancelled {
             onEvent(.usbcStatus(.connecting, nil))
 
-            let lineIO = POSIXSerialPort(
-                configuration: SerialPortConfiguration(
-                    path: configuration.usbcPort,
-                    baudRate: 9_600,
-                    readTimeoutSeconds: 0.5,
-                    writeTimeoutSeconds: 0.5
+            let transport: any DeviceTransport
+            if configuration.useSimulator {
+                transport = SimulatedStreamingTransport(sampleRateHz: configuration.sampleRateHz)
+            } else {
+                let lineIO = POSIXSerialPort(
+                    configuration: SerialPortConfiguration(
+                        path: configuration.usbcPort,
+                        baudRate: 9_600,
+                        readTimeoutSeconds: 0.5,
+                        writeTimeoutSeconds: 0.5
+                    )
                 )
-            )
-            let transport = StreamingSerialTransport(lineIO: lineIO)
+                transport = StreamingSerialTransport(lineIO: lineIO)
+            }
             let driver = UsbCDeviceDriver(transport: transport)
 
             do {
                 try await driver.connect()
                 reconnectAttempt = 0
-                onEvent(.usbcStatus(.connected, "USB-C meter connected"))
+                let source = configuration.useSimulator ? "simulator" : configuration.usbcPort
+                onEvent(.usbcStatus(.connected, "USB-C meter connected (\(source))"))
 
                 while !Task.isCancelled {
                     if let measurement = try await driver.readMeasurement(at: Date()) {
@@ -369,7 +381,9 @@ final class DashboardViewModel: ObservableObject {
             await runtime.start(with: configuration)
             await MainActor.run {
                 isRuntimeActive = true
-                statusMessage = "Connecting devices..."
+                statusMessage = configuration.useSimulator
+                    ? "Connecting simulator devices..."
+                    : "Connecting devices..."
             }
         }
     }
@@ -385,14 +399,25 @@ final class DashboardViewModel: ObservableObject {
     }
 
     func refreshPorts() {
-        let discovered = SerialPortDiscovery.listPorts()
+        var discovered = SerialPortDiscovery.listPorts()
+        let simulatedPorts = [SimulatedPort.multimeter, SimulatedPort.usbC]
+        for port in simulatedPorts where !discovered.contains(port) {
+            discovered.append(port)
+        }
         availablePorts = discovered
 
-        if configuration.multimeterPort.isEmpty, let first = discovered.first {
-            configuration.multimeterPort = first
-        }
-        if configuration.usbcPort.isEmpty, let first = discovered.first {
-            configuration.usbcPort = first
+        if configuration.useSimulator {
+            configuration.multimeterPort = SimulatedPort.multimeter
+            configuration.usbcPort = SimulatedPort.usbC
+        } else {
+            if configuration.multimeterPort.isEmpty,
+               let firstReal = discovered.first(where: { $0 != SimulatedPort.multimeter && $0 != SimulatedPort.usbC }) {
+                configuration.multimeterPort = firstReal
+            }
+            if configuration.usbcPort.isEmpty,
+               let firstReal = discovered.first(where: { $0 != SimulatedPort.multimeter && $0 != SimulatedPort.usbC }) {
+                configuration.usbcPort = firstReal
+            }
         }
     }
 
@@ -406,7 +431,7 @@ final class DashboardViewModel: ObservableObject {
     }
 
     func saveSettings() {
-        let newConfig = editableConfiguration
+        let newConfig = normalizedConfiguration(editableConfiguration)
         configuration = newConfig
         isSettingsPresented = false
 
@@ -432,15 +457,7 @@ final class DashboardViewModel: ObservableObject {
         refreshPorts()
 
         do {
-            var loaded = try await configurationStore.load()
-
-            if loaded.multimeterPort.isEmpty, let first = availablePorts.first {
-                loaded.multimeterPort = first
-            }
-            if loaded.usbcPort.isEmpty, let first = availablePorts.first {
-                loaded.usbcPort = first
-            }
-
+            let loaded = normalizedConfiguration(try await configurationStore.load())
             configuration = loaded
             editableConfiguration = loaded
             statusMessage = "Configuration loaded"
@@ -520,6 +537,25 @@ final class DashboardViewModel: ObservableObject {
         if usbcSamples.count > maxSamples {
             usbcSamples.removeFirst(usbcSamples.count - maxSamples)
         }
+    }
+
+    private func normalizedConfiguration(_ raw: AppConfiguration) -> AppConfiguration {
+        var config = raw
+
+        if config.useSimulator {
+            config.multimeterPort = SimulatedPort.multimeter
+            config.usbcPort = SimulatedPort.usbC
+        } else {
+            let realPorts = availablePorts.filter { $0 != SimulatedPort.multimeter && $0 != SimulatedPort.usbC }
+            if config.multimeterPort.isEmpty, let first = realPorts.first {
+                config.multimeterPort = first
+            }
+            if config.usbcPort.isEmpty, let first = realPorts.first {
+                config.usbcPort = first
+            }
+        }
+
+        return config
     }
 
     private static func resolveConfigURL() -> URL {

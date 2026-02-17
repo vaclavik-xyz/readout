@@ -78,6 +78,10 @@ struct ContentView: View {
 
             Spacer()
 
+            Text(viewModel.configuration.useSimulator ? "Mode: Simulator" : "Mode: Hardware")
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.7))
+
             Text("Ports: \(viewModel.availablePorts.count)")
                 .font(.system(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.6))

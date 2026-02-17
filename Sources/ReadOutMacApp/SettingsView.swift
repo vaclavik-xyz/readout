@@ -50,8 +50,10 @@ struct SettingsView: View {
                 }
 
                 Section("Runtime") {
-                    Toggle("Use simulator (planned)", isOn: $configuration.useSimulator)
-                        .disabled(true)
+                    Toggle("Use simulator", isOn: $configuration.useSimulator)
+                    Text("When enabled, app uses internal simulated ports SIM_MULTIMETER and SIM_USBC.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
             .formStyle(.grouped)

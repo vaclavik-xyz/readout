@@ -50,6 +50,7 @@ Native macOS measurement app rewrite focused on speed, reliability, and clean UI
   - settings sheet wired to persistent JSON config
   - serial port refresh + reconnect handling
   - live CSV + OBS/text output wiring
+  - built-in simulator mode (`SIM_MULTIMETER`, `SIM_USBC`) for no-hardware testing
 
 ## Next Milestones
 1. Add real device capture fixtures (multimeter + USB-C) to expand compatibility matrix
