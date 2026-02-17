@@ -41,6 +41,8 @@ func saveAndLoadRoundTrip() async throws {
     config.pcBeepSoundPreset = .sosumi
     config.multimeterPopoutMode = .mini
     config.usbcPopoutMode = .compact
+    config.multimeterPopoutFrame = .init(x: 120, y: 160, width: 480, height: 260)
+    config.usbcPopoutFrame = .init(x: 640, y: 200, width: 500, height: 280)
 
     try await store.save(config)
     #expect(await store.hasPersistedConfiguration() == true)
@@ -95,7 +97,11 @@ func unknownDashboardEnumValuesFallbackToDefaults() throws {
         "dashboard_theme": "alien",
         "pc_beep_sound_preset": "custom",
         "multimeter_popout_mode": "x-mode",
-        "usbc_popout_mode": "y-mode"
+        "usbc_popout_mode": "y-mode",
+        "multimeter_popout_x": 100,
+        "multimeter_popout_y": 100,
+        "multimeter_popout_width": -10,
+        "multimeter_popout_height": 80
     ]
 
     let migrated = AppConfiguration.fromDictionary(raw)
@@ -104,4 +110,6 @@ func unknownDashboardEnumValuesFallbackToDefaults() throws {
     #expect(migrated.pcBeepSoundPreset == .system)
     #expect(migrated.multimeterPopoutMode == .detailed)
     #expect(migrated.usbcPopoutMode == .detailed)
+    #expect(migrated.multimeterPopoutFrame == nil)
+    #expect(migrated.usbcPopoutFrame == nil)
 }

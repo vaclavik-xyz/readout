@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import ReadOutMacApp
 @testable import ReadOutCore
+@testable import ReadOutPersistence
 
 @MainActor
 @Test
@@ -103,6 +104,18 @@ func popoutModeSelectionPersistsToConfiguration() {
     #expect(viewModel.usbcPopoutMode == .compact)
     #expect(viewModel.configuration.multimeterPopoutMode == .mini)
     #expect(viewModel.configuration.usbcPopoutMode == .compact)
+}
+
+@MainActor
+@Test
+func popoutFramePersistsToConfiguration() {
+    let viewModel = DashboardViewModel()
+    let frame = AppConfiguration.PopoutWindowFrame(x: 120, y: 140, width: 420, height: 260)
+
+    viewModel.setPopoutFrame(frame, for: .multimeter)
+
+    #expect(viewModel.popoutFrame(for: .multimeter) == frame)
+    #expect(viewModel.configuration.multimeterPopoutFrame == frame)
 }
 
 @MainActor

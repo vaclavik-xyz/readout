@@ -1,4 +1,5 @@
 import SwiftUI
+import ReadOutPersistence
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -41,14 +42,17 @@ final class DevicePopoutManager: ObservableObject {
             return
         }
 
+        let restoredFrame = restoreFrameIfAvailable(for: kind, viewModel: viewModel)
+        let initialFrame = restoredFrame ?? NSRect(origin: .zero, size: kind.defaultSize)
+
         let panel = NSPanel(
-            contentRect: NSRect(origin: .zero, size: kind.defaultSize),
+            contentRect: initialFrame,
             styleMask: [.titled, .closable, .utilityWindow, .resizable],
             backing: .buffered,
             defer: false
         )
         panel.title = kind.windowTitle
-        panel.setContentSize(kind.defaultSize)
+        panel.setContentSize(initialFrame.size)
         panel.minSize = CGSize(width: 260, height: 170)
         panel.maxSize = CGSize(width: 960, height: 720)
         panel.isFloatingPanel = true
@@ -56,12 +60,28 @@ final class DevicePopoutManager: ObservableObject {
         panel.isReleasedWhenClosed = false
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.center()
-
-        let delegate = DevicePopoutWindowDelegate { [weak self] in
-            self?.panels[kind] = nil
-            self?.panelDelegates[kind] = nil
+        if restoredFrame == nil {
+            panel.center()
         }
+
+        let delegate = DevicePopoutWindowDelegate(
+            onClose: { [weak self] in
+                self?.panels[kind] = nil
+                self?.panelDelegates[kind] = nil
+            },
+            onFrameChanged: { [weak viewModel] frame in
+                guard let viewModel else {
+                    return
+                }
+                let popoutFrame = AppConfiguration.PopoutWindowFrame(
+                    x: frame.origin.x,
+                    y: frame.origin.y,
+                    width: frame.size.width,
+                    height: frame.size.height
+                )
+                viewModel.setPopoutFrame(popoutFrame, for: kind)
+            }
+        )
         panel.delegate = delegate
         panelDelegates[kind] = delegate
 
@@ -75,6 +95,42 @@ final class DevicePopoutManager: ObservableObject {
         #endif
     }
 
+    private func restoreFrameIfAvailable(
+        for kind: DevicePopoutKind,
+        viewModel: DashboardViewModel
+    ) -> NSRect? {
+        #if canImport(AppKit)
+        guard let persisted = viewModel.popoutFrame(for: kind) else {
+            return nil
+        }
+        let rawFrame = NSRect(
+            x: persisted.x,
+            y: persisted.y,
+            width: persisted.width,
+            height: persisted.height
+        )
+        guard rawFrame.width >= 120, rawFrame.height >= 90 else {
+            return nil
+        }
+
+        if NSScreen.screens.contains(where: { $0.visibleFrame.intersects(rawFrame) }) {
+            return rawFrame
+        }
+
+        guard let screen = NSScreen.main else {
+            return nil
+        }
+        let visible = screen.visibleFrame.insetBy(dx: 24, dy: 24)
+        let safeWidth = min(max(260, rawFrame.width), visible.width)
+        let safeHeight = min(max(170, rawFrame.height), visible.height)
+        let safeX = visible.midX - (safeWidth / 2)
+        let safeY = visible.midY - (safeHeight / 2)
+        return NSRect(x: safeX, y: safeY, width: safeWidth, height: safeHeight)
+        #else
+        return nil
+        #endif
+    }
+
     func close(_ kind: DevicePopoutKind) {
         #if canImport(AppKit)
         panels[kind]?.close()
@@ -83,15 +139,51 @@ final class DevicePopoutManager: ObservableObject {
 }
 
 #if canImport(AppKit)
+@MainActor
 private final class DevicePopoutWindowDelegate: NSObject, NSWindowDelegate {
     private let onClose: () -> Void
+    private let onFrameChanged: (NSRect) -> Void
+    private var pendingPersistWorkItem: DispatchWorkItem?
+    private let debounceDelay: TimeInterval = 0.25
 
-    init(onClose: @escaping () -> Void) {
+    init(onClose: @escaping () -> Void, onFrameChanged: @escaping (NSRect) -> Void) {
         self.onClose = onClose
+        self.onFrameChanged = onFrameChanged
     }
 
     func windowWillClose(_ notification: Notification) {
+        pendingPersistWorkItem?.cancel()
         onClose()
+    }
+
+    func windowDidMove(_ notification: Notification) {
+        scheduleFramePersist(notification)
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        scheduleFramePersist(notification)
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        scheduleFramePersist(notification, immediate: true)
+    }
+
+    private func scheduleFramePersist(_ notification: Notification, immediate: Bool = false) {
+        guard let window = notification.object as? NSWindow else {
+            return
+        }
+
+        let frame = window.frame
+        pendingPersistWorkItem?.cancel()
+        let work = DispatchWorkItem { [onFrameChanged] in
+            onFrameChanged(frame)
+        }
+        pendingPersistWorkItem = work
+        if immediate {
+            DispatchQueue.main.async(execute: work)
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + debounceDelay, execute: work)
+        }
     }
 }
 #endif

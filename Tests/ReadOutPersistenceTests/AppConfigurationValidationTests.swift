@@ -89,6 +89,8 @@ func dashboardPreferencesDoNotCreateValidationErrors() {
     config.pcBeepSoundPreset = .funk
     config.multimeterPopoutMode = .mini
     config.usbcPopoutMode = .compact
+    config.multimeterPopoutFrame = .init(x: 90, y: 120, width: 420, height: 240)
+    config.usbcPopoutFrame = .init(x: 520, y: 150, width: 430, height: 250)
 
     let result = AppConfigurationValidator.validate(config)
 

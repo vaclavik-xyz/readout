@@ -463,6 +463,33 @@ final class DashboardViewModel: ObservableObject {
         persistConfigurationSilently()
     }
 
+    func popoutFrame(for kind: DevicePopoutKind) -> AppConfiguration.PopoutWindowFrame? {
+        switch kind {
+        case .multimeter:
+            return configuration.multimeterPopoutFrame
+        case .usbc:
+            return configuration.usbcPopoutFrame
+        }
+    }
+
+    func setPopoutFrame(_ frame: AppConfiguration.PopoutWindowFrame, for kind: DevicePopoutKind) {
+        switch kind {
+        case .multimeter:
+            guard configuration.multimeterPopoutFrame != frame else {
+                return
+            }
+            configuration.multimeterPopoutFrame = frame
+            editableConfiguration.multimeterPopoutFrame = frame
+        case .usbc:
+            guard configuration.usbcPopoutFrame != frame else {
+                return
+            }
+            configuration.usbcPopoutFrame = frame
+            editableConfiguration.usbcPopoutFrame = frame
+        }
+        persistConfigurationSilently()
+    }
+
     func resetVisualState() {
         multimeterAlert = "OK"
         multimeterAlertState = .none

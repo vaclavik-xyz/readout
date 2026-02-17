@@ -32,6 +32,20 @@ public struct AppConfiguration: Sendable, Equatable {
         case detailed = "detailed"
     }
 
+    public struct PopoutWindowFrame: Sendable, Equatable, Codable {
+        public var x: Double
+        public var y: Double
+        public var width: Double
+        public var height: Double
+
+        public init(x: Double, y: Double, width: Double, height: Double) {
+            self.x = x
+            self.y = y
+            self.width = width
+            self.height = height
+        }
+    }
+
     public var multimeterPort: String = ""
     public var usbcPort: String = ""
     public var multimeterEnabled: Bool = true
@@ -78,6 +92,8 @@ public struct AppConfiguration: Sendable, Equatable {
     public var pcBeepSoundPreset: MacAlertSoundPreset = .system
     public var multimeterPopoutMode: PopoutDisplayMode = .detailed
     public var usbcPopoutMode: PopoutDisplayMode = .detailed
+    public var multimeterPopoutFrame: PopoutWindowFrame?
+    public var usbcPopoutFrame: PopoutWindowFrame?
 
     public init() {}
 
@@ -110,6 +126,15 @@ public struct AppConfiguration: Sendable, Equatable {
             }
             return defaultValue
         }
+        func optionalDouble(_ key: String) -> Double? {
+            if let d = data[key] as? Double {
+                return d
+            }
+            if let i = data[key] as? Int {
+                return Double(i)
+            }
+            return nil
+        }
         func obsMode(_ key: String, default defaultValue: ObsOutputMode) -> ObsOutputMode {
             guard let raw = data[key] as? String else {
                 return defaultValue
@@ -139,6 +164,21 @@ public struct AppConfiguration: Sendable, Equatable {
                 return defaultValue
             }
             return PopoutDisplayMode(rawValue: raw.lowercased()) ?? defaultValue
+        }
+        func popoutFrame(prefix: String) -> PopoutWindowFrame? {
+            guard
+                let x = optionalDouble("\(prefix)_x"),
+                let y = optionalDouble("\(prefix)_y"),
+                let width = optionalDouble("\(prefix)_width"),
+                let height = optionalDouble("\(prefix)_height")
+            else {
+                return nil
+            }
+
+            guard width >= 120, height >= 90 else {
+                return nil
+            }
+            return PopoutWindowFrame(x: x, y: y, width: width, height: height)
         }
 
         config.multimeterPort = string("multimeter_port", default: config.multimeterPort)
@@ -186,6 +226,8 @@ public struct AppConfiguration: Sendable, Equatable {
         config.pcBeepSoundPreset = soundPreset("pc_beep_sound_preset", default: config.pcBeepSoundPreset)
         config.multimeterPopoutMode = popoutDisplayMode("multimeter_popout_mode", default: config.multimeterPopoutMode)
         config.usbcPopoutMode = popoutDisplayMode("usbc_popout_mode", default: config.usbcPopoutMode)
+        config.multimeterPopoutFrame = popoutFrame(prefix: "multimeter_popout")
+        config.usbcPopoutFrame = popoutFrame(prefix: "usbc_popout")
 
         // Legacy migrations from Python implementation.
         if config.multimeterPort.isEmpty {
@@ -217,7 +259,7 @@ public struct AppConfiguration: Sendable, Equatable {
     }
 
     public func toDictionary() -> [String: Any] {
-        [
+        var dictionary: [String: Any] = [
             "multimeter_port": multimeterPort,
             "usbc_port": usbcPort,
             "multimeter_enabled": multimeterEnabled,
@@ -259,6 +301,22 @@ public struct AppConfiguration: Sendable, Equatable {
             "multimeter_popout_mode": multimeterPopoutMode.rawValue,
             "usbc_popout_mode": usbcPopoutMode.rawValue,
         ]
+
+        if let frame = multimeterPopoutFrame {
+            dictionary["multimeter_popout_x"] = frame.x
+            dictionary["multimeter_popout_y"] = frame.y
+            dictionary["multimeter_popout_width"] = frame.width
+            dictionary["multimeter_popout_height"] = frame.height
+        }
+
+        if let frame = usbcPopoutFrame {
+            dictionary["usbc_popout_x"] = frame.x
+            dictionary["usbc_popout_y"] = frame.y
+            dictionary["usbc_popout_width"] = frame.width
+            dictionary["usbc_popout_height"] = frame.height
+        }
+
+        return dictionary
     }
 }
 
