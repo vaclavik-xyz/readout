@@ -142,3 +142,32 @@ func logCaptureDisabledSuppressesInfoButKeepsWarnings() {
     #expect(viewModel.runtimeLogs.contains(where: { $0.message == "info-muted" }) == false)
     #expect(viewModel.runtimeLogs.contains(where: { $0.message == "warn-kept" }))
 }
+
+@MainActor
+@Test
+func coalescedRefreshDoesNotScaleLinearlyWithMeasurementBurst() async {
+    let viewModel = DashboardViewModel()
+    let before = viewModel.debugRefreshTickCounters()
+
+    let baseTimestamp = Date()
+    for i in 0..<400 {
+        viewModel.debugInjectMultimeterMeasurement(
+            DeviceMeasurement(
+                device: .multimeter,
+                mode: .dcVoltage,
+                modeString: "VOLT:DC",
+                primaryValue: Double(i) * 0.01,
+                primaryUnit: "V DC",
+                timestamp: baseTimestamp.addingTimeInterval(Double(i) * 0.001)
+            )
+        )
+    }
+
+    try? await Task.sleep(nanoseconds: 260_000_000)
+
+    let after = viewModel.debugRefreshTickCounters()
+    let appliedDelta = after.applied - before.applied
+
+    #expect(appliedDelta > 0)
+    #expect(appliedDelta < 50)
+}

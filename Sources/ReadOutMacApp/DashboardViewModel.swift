@@ -1227,5 +1227,9 @@ final class DashboardViewModel: ObservableObject {
     func debugInjectRuntimeLog(level: RuntimeLogLevel, message: String) {
         appendRuntimeLog(message, level: level, persist: false)
     }
+
+    func debugRefreshTickCounters() -> (applied: Int, skipped: Int) {
+        (appliedUIRefreshTicks, skippedUIRefreshTicks)
+    }
 #endif
 }
