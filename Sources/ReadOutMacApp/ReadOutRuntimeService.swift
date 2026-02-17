@@ -69,6 +69,7 @@ actor ReadOutRuntime {
         let csvLogger = CsvLogger()
         let obsWriter = ObsOutputWriter()
         var reconnectAttempt = 0
+        var outputRetryGate = OutputRetryGate()
 
         while !Task.isCancelled {
             onEvent(.multimeterStatus(.connecting, nil))
@@ -108,15 +109,20 @@ actor ReadOutRuntime {
                             configuration: alertConfiguration
                         )
 
-                        do {
-                            try await handleMultimeterOutputs(
-                                measurement,
-                                configuration: configuration,
-                                csvLogger: csvLogger,
-                                obsWriter: obsWriter
-                            )
-                        } catch {
-                            onEvent(.runtimeError("Multimeter output write failed: \(error.localizedDescription)"))
+                        let now = Date()
+                        if outputRetryGate.shouldAttempt(at: now) {
+                            do {
+                                try await handleMultimeterOutputs(
+                                    measurement,
+                                    configuration: configuration,
+                                    csvLogger: csvLogger,
+                                    obsWriter: obsWriter
+                                )
+                                outputRetryGate.recordSuccess()
+                            } catch {
+                                outputRetryGate.recordFailure(at: now, cooldownSeconds: 2.0)
+                                onEvent(.runtimeError("Multimeter output write failed: \(error.localizedDescription)"))
+                            }
                         }
 
                         onEvent(.multimeterMeasurement(measurement))
@@ -152,6 +158,7 @@ actor ReadOutRuntime {
         let csvLogger = CsvLogger()
         let obsWriter = ObsOutputWriter()
         var reconnectAttempt = 0
+        var outputRetryGate = OutputRetryGate()
 
         while !Task.isCancelled {
             onEvent(.usbcStatus(.connecting, nil))
@@ -180,15 +187,20 @@ actor ReadOutRuntime {
 
                 while !Task.isCancelled {
                     if let measurement = try await driver.readMeasurement(at: Date()) {
-                        do {
-                            try await handleUsbCOutputs(
-                                measurement,
-                                configuration: configuration,
-                                csvLogger: csvLogger,
-                                obsWriter: obsWriter
-                            )
-                        } catch {
-                            onEvent(.runtimeError("USB-C output write failed: \(error.localizedDescription)"))
+                        let now = Date()
+                        if outputRetryGate.shouldAttempt(at: now) {
+                            do {
+                                try await handleUsbCOutputs(
+                                    measurement,
+                                    configuration: configuration,
+                                    csvLogger: csvLogger,
+                                    obsWriter: obsWriter
+                                )
+                                outputRetryGate.recordSuccess()
+                            } catch {
+                                outputRetryGate.recordFailure(at: now, cooldownSeconds: 2.0)
+                                onEvent(.runtimeError("USB-C output write failed: \(error.localizedDescription)"))
+                            }
                         }
 
                         onEvent(.usbcMeasurement(measurement))
