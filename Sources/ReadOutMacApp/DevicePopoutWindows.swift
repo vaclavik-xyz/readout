@@ -148,7 +148,6 @@ private struct DevicePopoutView: View {
                     }
                 }
 
-                Divider().overlay(Color.primary.opacity(0.15))
             }
             .padding(14 * scale)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
