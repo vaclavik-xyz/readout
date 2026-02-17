@@ -75,7 +75,7 @@ struct ContentView: View {
     }
 
     private var header: some View {
-        HStack {
+        HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("readOut")
                     .font(.system(size: 32, weight: .heavy, design: .rounded))
@@ -86,70 +86,64 @@ struct ContentView: View {
             }
             Spacer()
 
-            HStack(spacing: 8) {
-                Picker("", selection: Binding(
-                    get: { viewModel.deviceVisibility },
-                    set: { viewModel.setDeviceVisibility($0) }
-                )) {
-                    ForEach(DashboardDeviceVisibility.allCases) { visibility in
-                        Text(visibility.title).tag(visibility)
+            VStack(alignment: .trailing, spacing: 8) {
+                HStack(spacing: 8) {
+                    Picker("", selection: Binding(
+                        get: { viewModel.deviceVisibility },
+                        set: { viewModel.setDeviceVisibility($0) }
+                    )) {
+                        ForEach(DashboardDeviceVisibility.allCases) { visibility in
+                            Text(visibility.title).tag(visibility)
+                        }
                     }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 260)
+                    .pickerStyle(.segmented)
+                    .frame(width: 260)
 
-                Button(viewModel.isRenderPaused ? "Resume UI" : "Pause UI") {
-                    viewModel.toggleRenderPause()
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(viewModel.isRenderPaused ? .green : .yellow)
-
-                Button(viewModel.isDashboardBeepEnabled ? "Beep On" : "Beep Off") {
-                    viewModel.toggleDashboardBeep()
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(viewModel.isDashboardBeepEnabled ? .blue : .gray)
-
-                Button(viewModel.isRuntimeLogPanelVisible ? "Hide Logs" : "Show Logs") {
-                    viewModel.toggleRuntimeLogPanelVisibility()
-                }
-                .buttonStyle(.bordered)
-
-                Button("Refresh Ports") { viewModel.refreshPorts() }
-                    .buttonStyle(.bordered)
-
-                Button("Settings") { viewModel.openSettings() }
-                    .buttonStyle(.bordered)
-
-                Button("Clear Charts") { viewModel.clearCharts() }
-                    .buttonStyle(.bordered)
-
-                Button("Reset Alert") { viewModel.resetVisualState() }
-                    .buttonStyle(.bordered)
-
-                Button("Clear Logs") { viewModel.clearRuntimeLogs() }
-                    .buttonStyle(.bordered)
-
-                Button("Export Logs") { exportLogs() }
-                    .buttonStyle(.bordered)
-
-                Button("Export Diagnostics") { exportDiagnostics() }
-                    .buttonStyle(.bordered)
-
-                Button("Restart Runtime") { viewModel.restartRuntime() }
+                    Button(viewModel.isRenderPaused ? "Resume UI" : "Pause UI") {
+                        viewModel.toggleRenderPause()
+                    }
                     .buttonStyle(.borderedProminent)
-                    .tint(.orange)
-                    .disabled(viewModel.isRecoveryInProgress)
+                    .tint(viewModel.isRenderPaused ? .green : .yellow)
 
-                if viewModel.isRuntimeActive {
-                    Button("Disconnect") { viewModel.disconnectAll() }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.red)
-                        .disabled(viewModel.isRecoveryInProgress)
-                } else {
-                    Button("Connect All") { viewModel.connectAll() }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(viewModel.isRecoveryInProgress || !viewModel.canConnectAll)
+                    Button(viewModel.isRuntimeActive ? "Disconnect" : "Connect") {
+                        if viewModel.isRuntimeActive {
+                            viewModel.disconnectAll()
+                        } else {
+                            viewModel.connectAll()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(viewModel.isRuntimeActive ? .red : .blue)
+                    .disabled(viewModel.isRecoveryInProgress || (!viewModel.isRuntimeActive && !viewModel.canConnectAll))
+                }
+
+                HStack(spacing: 8) {
+                    Button(viewModel.isDashboardBeepEnabled ? "Beep On" : "Beep Off") {
+                        viewModel.toggleDashboardBeep()
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button(viewModel.isRuntimeLogPanelVisible ? "Hide Logs" : "Show Logs") {
+                        viewModel.toggleRuntimeLogPanelVisibility()
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button("Settings") { viewModel.openSettings() }
+                        .buttonStyle(.bordered)
+
+                    Menu("More") {
+                        Button("Refresh Ports") { viewModel.refreshPorts() }
+                        Button("Restart Runtime") { viewModel.restartRuntime() }
+                            .disabled(viewModel.isRecoveryInProgress)
+                        Divider()
+                        Button("Clear Charts") { viewModel.clearCharts() }
+                        Button("Reset Alert") { viewModel.resetVisualState() }
+                        Button("Clear Logs") { viewModel.clearRuntimeLogs() }
+                        Divider()
+                        Button("Export Logs") { exportLogs() }
+                        Button("Export Diagnostics") { exportDiagnostics() }
+                    }
+                    .menuStyle(.borderlessButton)
                 }
             }
         }

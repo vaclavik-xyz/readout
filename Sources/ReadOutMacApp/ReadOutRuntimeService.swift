@@ -64,6 +64,8 @@ actor ReadOutRuntime {
     ) async {
         let reconnectEnabled = configuration.multimeterAutoReconnect
         let sampleIntervalSeconds = 1.0 / Double(max(1, configuration.sampleRateHz))
+        let uiEventRateHz = max(1, min(configuration.sampleRateHz, 12))
+        let uiEmitIntervalSeconds = 1.0 / Double(uiEventRateHz)
         let alertConfiguration = configuration.alertConfiguration
 
         let csvLogger = CsvLogger()
@@ -87,6 +89,7 @@ actor ReadOutRuntime {
             "Output queues ready for multimeter (capacity \(configuration.outputQueueCapacity), retries \(configuration.outputQueueMaxRetryAttempts))."
         ))
         var reconnectAttempt = 0
+        var lastUIEmitAt = Date.distantPast
 
         while !Task.isCancelled {
             onEvent(.multimeterStatus(.connecting, nil))
@@ -135,7 +138,11 @@ actor ReadOutRuntime {
                             obsQueue: obsQueue
                         )
 
-                        onEvent(.multimeterMeasurement(measurement))
+                        let now = Date()
+                        if now.timeIntervalSince(lastUIEmitAt) >= uiEmitIntervalSeconds {
+                            lastUIEmitAt = now
+                            onEvent(.multimeterMeasurement(measurement))
+                        }
                     }
 
                     await sleep(seconds: sampleIntervalSeconds)
@@ -166,6 +173,8 @@ actor ReadOutRuntime {
         onEvent: @escaping @Sendable (RuntimeEvent) -> Void
     ) async {
         let reconnectEnabled = configuration.usbcAutoReconnect
+        let uiEventRateHz = max(1, min(configuration.sampleRateHz, 12))
+        let uiEmitIntervalSeconds = 1.0 / Double(uiEventRateHz)
 
         let csvLogger = CsvLogger()
         let obsWriter = ObsOutputWriter()
@@ -188,6 +197,7 @@ actor ReadOutRuntime {
             "Output queues ready for USB-C meter (capacity \(configuration.outputQueueCapacity), retries \(configuration.outputQueueMaxRetryAttempts))."
         ))
         var reconnectAttempt = 0
+        var lastUIEmitAt = Date.distantPast
 
         while !Task.isCancelled {
             onEvent(.usbcStatus(.connecting, nil))
@@ -225,7 +235,11 @@ actor ReadOutRuntime {
                             obsQueue: obsQueue
                         )
 
-                        onEvent(.usbcMeasurement(measurement))
+                        let now = Date()
+                        if now.timeIntervalSince(lastUIEmitAt) >= uiEmitIntervalSeconds {
+                            lastUIEmitAt = now
+                            onEvent(.usbcMeasurement(measurement))
+                        }
                     }
                 }
             } catch {
