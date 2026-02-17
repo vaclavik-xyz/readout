@@ -9,11 +9,11 @@ Project focus: speed, reliability, parser compatibility, and production-ready to
 ## Current State
 
 `readOut` is already runnable and includes:
-- SwiftUI macOS dashboard (`ReadOutMacApp`) with dual device cards, charts, alerts, runtime logs, and settings.
+- SwiftUI macOS dashboard (`ReadOutMacApp`) with dual/single device views, charts, alerts, runtime logs, and settings.
 - Real device runtime + simulator mode (`SIM_MULTIMETER`, `SIM_USBC`).
-- Persistent JSON config with validation, migration from legacy keys, and path pickers.
+- Persistent JSON config with validation, migration from legacy keys, and dashboard preferences (theme/layout/log visibility/beep controls).
 - CSV + OBS/text output sinks with bounded async write queues, retry, and backpressure telemetry.
-- Runtime recovery action, persistent log rotation/export, and diagnostics-oriented runtime log panel.
+- Runtime recovery action, UI render pause with coalesced chart refresh, persistent log rotation/export, and diagnostics-oriented runtime log panel.
 - Deterministic soak/fault harness CLI (`ReadOutSoak`) with JSON summary output.
 - Fixture import/validation/drift tooling CLI (`ReadOutFixtureTool`) for parser regression control.
 - macOS GitHub Actions CI (build, test, fixture drift guard, smoke checks, nightly soak).
@@ -95,6 +95,11 @@ Branch protection setup:
 ## Roadmap (Open)
 
 - `#1`: v1 stabilization and production-readiness epic (final release validation + tagging)
+- `#12`: render pause + throttled dashboard pipeline for high-rate hardware streams
+- `#13`: dashboard device visibility modes (Both / Multimeter / USB-C)
+- `#14`: runtime logs hide/disable controls in dashboard
+- `#15`: configurable Mac alert sound + dashboard beep master toggle
+- `#16`: theme selector (System / Light / Dark)
 
 Completed recently:
 - `#9`: first-run setup wizard + serial auto-detection + connect preflight blocking
