@@ -44,9 +44,12 @@ Native macOS measurement app rewrite focused on speed, reliability, and clean UI
   - `UsbCDeviceDriver` (frame decoding + energy accumulation/reset)
 - fixture-driven parser compatibility tests are now in place
   - fixture schema documented in `docs/fixture-format.md`
+- initial macOS SwiftUI app target exists:
+  - executable target `ReadOutMacApp`
+  - dashboard scaffold with dual cards and charts
 
 ## Next Milestones
 1. Add real device capture fixtures (multimeter + USB-C) to expand compatibility matrix
-2. Implement SwiftUI macOS app target with dual-device dashboard and graphs
-3. Wire settings + output writers into the SwiftUI app
+2. Wire real drivers/transports into the SwiftUI app
+3. Add settings panel and persist edits to config store
 4. Add long-run soak tests for reconnect + serial fault scenarios

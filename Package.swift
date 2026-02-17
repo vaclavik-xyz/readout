@@ -19,6 +19,10 @@ let package = Package(
         .library(
             name: "ReadOutPersistence",
             targets: ["ReadOutPersistence"]
+        ),
+        .executable(
+            name: "ReadOutMacApp",
+            targets: ["ReadOutMacApp"]
         )
     ],
     targets: [
@@ -32,6 +36,10 @@ let package = Package(
         .target(
             name: "ReadOutPersistence",
             dependencies: ["ReadOutCore"]
+        ),
+        .executableTarget(
+            name: "ReadOutMacApp",
+            dependencies: ["ReadOutCore", "ReadOutIO", "ReadOutPersistence"]
         ),
         .testTarget(
             name: "ReadOutCoreTests",
