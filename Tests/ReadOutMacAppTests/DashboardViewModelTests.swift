@@ -231,3 +231,33 @@ func adaptiveRefreshReturnsToNormalAfterLoadDrops() async {
     #expect(diagnostics.mode == "normal")
     #expect(diagnostics.targetHz == 10)
 }
+
+@MainActor
+@Test
+func uiRefreshRuntimeSummaryReflectsAdaptiveMode() async {
+    let viewModel = DashboardViewModel()
+    viewModel.debugForceUIRefreshSummaryUpdate()
+    #expect(viewModel.uiRefreshRuntimeSummary.contains("target:10Hz"))
+
+    viewModel.debugSetForcedUIRefreshProcessingMilliseconds(24)
+    let baseTimestamp = Date()
+    for i in 0..<260 {
+        viewModel.debugInjectMultimeterMeasurement(
+            DeviceMeasurement(
+                device: .multimeter,
+                mode: .dcVoltage,
+                modeString: "VOLT:DC",
+                primaryValue: Double(i) * 0.01,
+                primaryUnit: "V DC",
+                timestamp: baseTimestamp.addingTimeInterval(Double(i) * 0.001)
+            )
+        )
+    }
+
+    try? await Task.sleep(nanoseconds: 700_000_000)
+    #expect(viewModel.debugUIRefreshDiagnostics().mode == "high-load")
+
+    viewModel.debugForceUIRefreshSummaryUpdate()
+    #expect(viewModel.uiRefreshRuntimeSummary.contains("high-load"))
+    #expect(viewModel.uiRefreshRuntimeSummary.contains("target:6Hz"))
+}

@@ -61,6 +61,7 @@ final class DashboardViewModel: ObservableObject {
     @Published var editableConfiguration: AppConfiguration = .init()
     @Published var availablePorts: [String] = []
     @Published var statusMessage: String = "Ready"
+    @Published private(set) var uiRefreshRuntimeSummary: String = "UI normal 10Hz"
     @Published var runtimeLogs: [RuntimeLogEntry] = []
     @Published var isSettingsPresented: Bool = false
     @Published var isRuntimeActive: Bool = false
@@ -114,6 +115,9 @@ final class DashboardViewModel: ObservableObject {
     private var smoothedUIRefreshProcessingMs: Double = 0
     private var uiRefreshModeSwitchCount = 0
     private var pendingMeasurementEventsSinceLastRefresh = 0
+    private var lastUIRefreshSummaryTimestamp = Date()
+    private var lastUIRefreshSummaryAppliedTicks = 0
+    private var lastUIRefreshSummarySkippedTicks = 0
     private var multimeterChartDirty = true
     private var usbCChartDirty = true
     private var chartMarkersDirty = true
@@ -970,16 +974,19 @@ final class DashboardViewModel: ObservableObject {
     }
 
     private func processCoalescedUIRefreshTick(force: Bool) {
+        let now = Date()
         let hasPendingPresentation = pendingMultimeterSnapshot != nil || pendingUsbCSnapshot != nil || !pendingRuntimeLogs.isEmpty
         let hasPendingCharts = chartRefreshPending
         let hasWork = force || hasPendingPresentation || hasPendingCharts
         guard hasWork else {
             recoverUIRefreshModeOnIdle()
+            refreshUIRefreshRuntimeSummary(now: now)
             return
         }
 
         guard !isRenderPaused else {
             skippedUIRefreshTicks += 1
+            refreshUIRefreshRuntimeSummary(now: now)
             return
         }
 
@@ -1012,6 +1019,7 @@ final class DashboardViewModel: ObservableObject {
             hadPendingCharts: hasPendingCharts,
             measurementBurstCount: measurementBurstCount
         )
+        refreshUIRefreshRuntimeSummary(now: now)
     }
 
     private func applyPendingPresentationSnapshots() {
@@ -1196,6 +1204,32 @@ final class DashboardViewModel: ObservableObject {
             level: .info,
             persist: false
         )
+        refreshUIRefreshRuntimeSummary(now: Date(), force: true)
+    }
+
+    private func refreshUIRefreshRuntimeSummary(now: Date, force: Bool = false) {
+        let elapsed = now.timeIntervalSince(lastUIRefreshSummaryTimestamp)
+        guard force || elapsed >= 1.0 else {
+            return
+        }
+
+        let appliedDelta = appliedUIRefreshTicks - lastUIRefreshSummaryAppliedTicks
+        let skippedDelta = skippedUIRefreshTicks - lastUIRefreshSummarySkippedTicks
+        let actualHz = elapsed > 0 ? Double(appliedDelta) / elapsed : 0
+        let skippedHz = elapsed > 0 ? Double(skippedDelta) / elapsed : 0
+
+        uiRefreshRuntimeSummary = String(
+            format: "UI %@ target:%dHz actual:%.1fHz skip:%.1fHz tick:%.1fms",
+            uiRefreshMode.rawValue,
+            activeUIRefreshCadenceHz,
+            actualHz,
+            skippedHz,
+            smoothedUIRefreshProcessingMs
+        )
+
+        lastUIRefreshSummaryTimestamp = now
+        lastUIRefreshSummaryAppliedTicks = appliedUIRefreshTicks
+        lastUIRefreshSummarySkippedTicks = skippedUIRefreshTicks
     }
 
 #if DEBUG
@@ -1371,6 +1405,10 @@ final class DashboardViewModel: ObservableObject {
             smoothedUIRefreshProcessingMs,
             uiRefreshModeSwitchCount
         )
+    }
+
+    func debugForceUIRefreshSummaryUpdate() {
+        refreshUIRefreshRuntimeSummary(now: Date(), force: true)
     }
 #endif
 }

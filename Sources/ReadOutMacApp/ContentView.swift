@@ -178,6 +178,11 @@ struct ContentView: View {
                 .font(.system(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(palette.tertiaryText)
 
+            Text(viewModel.uiRefreshRuntimeSummary)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundStyle(palette.tertiaryText)
+                .lineLimit(1)
+
             if viewModel.isRenderPaused {
                 Text("UI Paused")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
