@@ -52,3 +52,14 @@ func clearRuntimeLogsDropsPreviousEntries() {
     #expect(viewModel.statusMessage == "Runtime logs cleared")
     #expect(viewModel.runtimeLogs.contains(where: { $0.message == "stale-log-entry" }) == false)
 }
+
+@MainActor
+@Test
+func restartRuntimeIgnoresRepeatedTrigger() {
+    let viewModel = DashboardViewModel()
+
+    viewModel.restartRuntime()
+    viewModel.restartRuntime()
+
+    #expect(viewModel.statusMessage == "Recovery already in progress.")
+}

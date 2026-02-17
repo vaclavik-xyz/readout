@@ -28,10 +28,12 @@ final class DashboardViewModel: ObservableObject {
     @Published var runtimeLogs: [RuntimeLogEntry] = []
     @Published var isSettingsPresented: Bool = false
     @Published var isRuntimeActive: Bool = false
+    @Published var isRecoveryInProgress: Bool = false
 
     private let configurationService = DashboardConfigurationService()
     private let configurationStore: ConfigurationStore
     private let pcBeepController = PcBeepController()
+    private var recoveryTask: Task<Void, Never>?
 
     private lazy var runtime = ReadOutRuntime { [weak self] event in
         Task { @MainActor [weak self] in
@@ -50,6 +52,11 @@ final class DashboardViewModel: ObservableObject {
     }
 
     func connectAll() {
+        guard !isRecoveryInProgress else {
+            setStatusMessage("Recovery in progress. Connect skipped.", level: .warning)
+            return
+        }
+
         Task {
             await runtime.start(with: configuration)
             await MainActor.run {
@@ -62,6 +69,11 @@ final class DashboardViewModel: ObservableObject {
     }
 
     func disconnectAll() {
+        guard !isRecoveryInProgress else {
+            setStatusMessage("Recovery in progress. Disconnect skipped.", level: .warning)
+            return
+        }
+
         Task {
             await runtime.stop()
             await MainActor.run {
@@ -101,6 +113,17 @@ final class DashboardViewModel: ObservableObject {
         multimeterAlert = "OK"
         multimeterAlertState = .none
         setStatusMessage("Visual state reset")
+    }
+
+    func restartRuntime() {
+        guard recoveryTask == nil else {
+            setStatusMessage("Recovery already in progress.", level: .warning)
+            return
+        }
+
+        recoveryTask = Task { @MainActor [weak self] in
+            await self?.runRecoverySequence()
+        }
     }
 
     func clearRuntimeLogs() {
@@ -252,6 +275,52 @@ final class DashboardViewModel: ObservableObject {
         if usbcSamples.count > maxSamples {
             usbcSamples.removeFirst(usbcSamples.count - maxSamples)
         }
+    }
+
+    private func runRecoverySequence() async {
+        defer {
+            isRecoveryInProgress = false
+            recoveryTask = nil
+        }
+
+        let configSnapshot = configuration
+
+        isRecoveryInProgress = true
+        setStatusMessage("Recovery: stopping runtime...", level: .warning)
+        pcBeepController.setBeeping(false)
+
+        await runtime.stop()
+
+        multimeterAlert = "OK"
+        multimeterAlertState = .none
+        setStatusMessage("Recovery: restarting runtime...", level: .warning)
+
+        await runtime.start(with: configSnapshot)
+        isRuntimeActive = true
+        setStatusMessage("Recovery: reconnecting devices...", level: .warning)
+
+        let ready = await waitForRecoveryReady(timeoutSeconds: 8.0)
+        if ready {
+            setStatusMessage("Recovery: ready")
+        } else {
+            setStatusMessage("Recovery: timeout waiting for stable state.", level: .warning)
+        }
+    }
+
+    private func waitForRecoveryReady(timeoutSeconds: TimeInterval) async -> Bool {
+        let deadline = Date().addingTimeInterval(max(0, timeoutSeconds))
+
+        while Date() < deadline {
+            let multimeterReady = !configuration.multimeterEnabled || multimeterStatus != .connecting
+            let usbCReady = !configuration.usbcEnabled || usbcStatus != .connecting
+            if multimeterReady && usbCReady {
+                return true
+            }
+
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+
+        return false
     }
 
     private func setStatusMessage(_ message: String, level: RuntimeLogLevel = .info) {

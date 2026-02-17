@@ -66,13 +66,20 @@ struct ContentView: View {
                 Button("Clear Logs") { viewModel.clearRuntimeLogs() }
                     .buttonStyle(.bordered)
 
+                Button("Restart Runtime") { viewModel.restartRuntime() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                    .disabled(viewModel.isRecoveryInProgress)
+
                 if viewModel.isRuntimeActive {
                     Button("Disconnect") { viewModel.disconnectAll() }
                         .buttonStyle(.borderedProminent)
                         .tint(.red)
+                        .disabled(viewModel.isRecoveryInProgress)
                 } else {
                     Button("Connect All") { viewModel.connectAll() }
                         .buttonStyle(.borderedProminent)
+                        .disabled(viewModel.isRecoveryInProgress)
                 }
             }
         }
