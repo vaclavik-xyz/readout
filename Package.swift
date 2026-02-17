@@ -23,6 +23,10 @@ let package = Package(
         .executable(
             name: "ReadOutMacApp",
             targets: ["ReadOutMacApp"]
+        ),
+        .executable(
+            name: "ReadOutSoak",
+            targets: ["ReadOutSoak"]
         )
     ],
     targets: [
@@ -40,6 +44,10 @@ let package = Package(
         .executableTarget(
             name: "ReadOutMacApp",
             dependencies: ["ReadOutCore", "ReadOutIO", "ReadOutPersistence"]
+        ),
+        .executableTarget(
+            name: "ReadOutSoak",
+            dependencies: ["ReadOutIO"]
         ),
         .testTarget(
             name: "ReadOutCoreTests",

@@ -52,8 +52,15 @@ Native macOS measurement app rewrite focused on speed, reliability, and clean UI
   - settings now include file pickers + inline validation
   - serial port refresh + reconnect handling
   - live CSV + OBS/text output wiring
+  - bounded async output queues (CSV/OBS) with backpressure telemetry
   - built-in simulator mode (`SIM_MULTIMETER`, `SIM_USBC`) for no-hardware testing
   - alarm rules (SHORT/OPEN/DCV high+low) with Mac beeper + meter beeper integration
+- soak/fault harness CLI is now available via `ReadOutSoak`:
+  - deterministic seeded fault injection (open fail, read fail, disconnect, slow-read windows)
+  - presets: `smoke`, `30m`, `2h`, `24h`
+  - machine-readable JSON summary artifact with reconnect/error/fault counters
+  - example:
+    - `swift run ReadOutSoak --preset smoke --seed 42 --output /tmp/readout-soak.json`
 
 ## Next Milestones
 1. Add real device capture fixtures (multimeter + USB-C) to expand compatibility matrix
