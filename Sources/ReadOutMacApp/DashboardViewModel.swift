@@ -71,6 +71,8 @@ final class DashboardViewModel: ObservableObject {
     @Published var isRuntimeLogPanelVisible: Bool = true
     @Published var isRuntimeLogCaptureEnabled: Bool = true
     @Published var isDashboardBeepEnabled: Bool = true
+    @Published var multimeterPopoutMode: DevicePopoutDisplayMode = .detailed
+    @Published var usbcPopoutMode: DevicePopoutDisplayMode = .detailed
     @Published var isRenderPaused: Bool = false
     @Published var isFirstRunWizardPresented: Bool = false
     @Published var firstRunConfiguration: AppConfiguration = .init()
@@ -430,6 +432,35 @@ final class DashboardViewModel: ObservableObject {
 
         setStatusMessage("UI rendering resumed")
         processCoalescedUIRefreshTick(force: true)
+    }
+
+    func popoutMode(for kind: DevicePopoutKind) -> DevicePopoutDisplayMode {
+        switch kind {
+        case .multimeter:
+            return multimeterPopoutMode
+        case .usbc:
+            return usbcPopoutMode
+        }
+    }
+
+    func setPopoutMode(_ mode: DevicePopoutDisplayMode, for kind: DevicePopoutKind) {
+        switch kind {
+        case .multimeter:
+            guard multimeterPopoutMode != mode else {
+                return
+            }
+            multimeterPopoutMode = mode
+            configuration.multimeterPopoutMode = mode.configurationValue
+            editableConfiguration.multimeterPopoutMode = mode.configurationValue
+        case .usbc:
+            guard usbcPopoutMode != mode else {
+                return
+            }
+            usbcPopoutMode = mode
+            configuration.usbcPopoutMode = mode.configurationValue
+            editableConfiguration.usbcPopoutMode = mode.configurationValue
+        }
+        persistConfigurationSilently()
     }
 
     func resetVisualState() {
@@ -849,6 +880,8 @@ final class DashboardViewModel: ObservableObject {
         isRuntimeLogPanelVisible = config.runtimeLogPanelVisible
         isRuntimeLogCaptureEnabled = config.runtimeLogCaptureEnabled
         isDashboardBeepEnabled = config.dashboardBeepMasterEnabled
+        multimeterPopoutMode = DevicePopoutDisplayMode(configurationValue: config.multimeterPopoutMode)
+        usbcPopoutMode = DevicePopoutDisplayMode(configurationValue: config.usbcPopoutMode)
     }
 
     private func configureBeepController() {

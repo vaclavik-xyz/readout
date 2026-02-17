@@ -26,6 +26,12 @@ public struct AppConfiguration: Sendable, Equatable {
         case funk = "funk"
     }
 
+    public enum PopoutDisplayMode: String, Sendable, Equatable, Codable, CaseIterable {
+        case mini = "mini"
+        case compact = "compact"
+        case detailed = "detailed"
+    }
+
     public var multimeterPort: String = ""
     public var usbcPort: String = ""
     public var multimeterEnabled: Bool = true
@@ -70,6 +76,8 @@ public struct AppConfiguration: Sendable, Equatable {
     public var runtimeLogCaptureEnabled: Bool = true
     public var dashboardBeepMasterEnabled: Bool = true
     public var pcBeepSoundPreset: MacAlertSoundPreset = .system
+    public var multimeterPopoutMode: PopoutDisplayMode = .detailed
+    public var usbcPopoutMode: PopoutDisplayMode = .detailed
 
     public init() {}
 
@@ -126,6 +134,12 @@ public struct AppConfiguration: Sendable, Equatable {
             }
             return MacAlertSoundPreset(rawValue: raw.lowercased()) ?? defaultValue
         }
+        func popoutDisplayMode(_ key: String, default defaultValue: PopoutDisplayMode) -> PopoutDisplayMode {
+            guard let raw = data[key] as? String else {
+                return defaultValue
+            }
+            return PopoutDisplayMode(rawValue: raw.lowercased()) ?? defaultValue
+        }
 
         config.multimeterPort = string("multimeter_port", default: config.multimeterPort)
         config.usbcPort = string("usbc_port", default: config.usbcPort)
@@ -170,6 +184,8 @@ public struct AppConfiguration: Sendable, Equatable {
         config.runtimeLogCaptureEnabled = bool("runtime_log_capture_enabled", default: config.runtimeLogCaptureEnabled)
         config.dashboardBeepMasterEnabled = bool("dashboard_beep_master_enabled", default: config.dashboardBeepMasterEnabled)
         config.pcBeepSoundPreset = soundPreset("pc_beep_sound_preset", default: config.pcBeepSoundPreset)
+        config.multimeterPopoutMode = popoutDisplayMode("multimeter_popout_mode", default: config.multimeterPopoutMode)
+        config.usbcPopoutMode = popoutDisplayMode("usbc_popout_mode", default: config.usbcPopoutMode)
 
         // Legacy migrations from Python implementation.
         if config.multimeterPort.isEmpty {
@@ -240,6 +256,8 @@ public struct AppConfiguration: Sendable, Equatable {
             "runtime_log_capture_enabled": runtimeLogCaptureEnabled,
             "dashboard_beep_master_enabled": dashboardBeepMasterEnabled,
             "pc_beep_sound_preset": pcBeepSoundPreset.rawValue,
+            "multimeter_popout_mode": multimeterPopoutMode.rawValue,
+            "usbc_popout_mode": usbcPopoutMode.rawValue,
         ]
     }
 }

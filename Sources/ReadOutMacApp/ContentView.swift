@@ -145,6 +145,32 @@ struct ContentView: View {
                         Button("Close USB-C Pop-out") {
                             popoutManager.close(.usbc)
                         }
+                        Menu("Multimeter Pop-out Mode") {
+                            ForEach(DevicePopoutDisplayMode.allCases) { mode in
+                                Button {
+                                    viewModel.setPopoutMode(mode, for: .multimeter)
+                                } label: {
+                                    if mode == viewModel.multimeterPopoutMode {
+                                        Label(mode.title, systemImage: "checkmark")
+                                    } else {
+                                        Text(mode.title)
+                                    }
+                                }
+                            }
+                        }
+                        Menu("USB-C Pop-out Mode") {
+                            ForEach(DevicePopoutDisplayMode.allCases) { mode in
+                                Button {
+                                    viewModel.setPopoutMode(mode, for: .usbc)
+                                } label: {
+                                    if mode == viewModel.usbcPopoutMode {
+                                        Label(mode.title, systemImage: "checkmark")
+                                    } else {
+                                        Text(mode.title)
+                                    }
+                                }
+                            }
+                        }
                         Divider()
                         Button("Refresh Ports") { viewModel.refreshPorts() }
                         Button("Restart Runtime") { viewModel.restartRuntime() }

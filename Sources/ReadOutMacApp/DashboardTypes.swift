@@ -255,3 +255,44 @@ enum MacAlertSoundPreset: String, Sendable, CaseIterable, Identifiable {
         }
     }
 }
+
+enum DevicePopoutDisplayMode: String, Sendable, CaseIterable, Identifiable {
+    case mini
+    case compact
+    case detailed
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .mini:
+            return "Mini"
+        case .compact:
+            return "Compact"
+        case .detailed:
+            return "Detailed"
+        }
+    }
+
+    init(configurationValue: AppConfiguration.PopoutDisplayMode) {
+        switch configurationValue {
+        case .mini:
+            self = .mini
+        case .compact:
+            self = .compact
+        case .detailed:
+            self = .detailed
+        }
+    }
+
+    var configurationValue: AppConfiguration.PopoutDisplayMode {
+        switch self {
+        case .mini:
+            return .mini
+        case .compact:
+            return .compact
+        case .detailed:
+            return .detailed
+        }
+    }
+}

@@ -93,6 +93,20 @@ func dashboardBeepMasterToggleUpdatesConfiguration() {
 
 @MainActor
 @Test
+func popoutModeSelectionPersistsToConfiguration() {
+    let viewModel = DashboardViewModel()
+
+    viewModel.setPopoutMode(.mini, for: .multimeter)
+    viewModel.setPopoutMode(.compact, for: .usbc)
+
+    #expect(viewModel.multimeterPopoutMode == .mini)
+    #expect(viewModel.usbcPopoutMode == .compact)
+    #expect(viewModel.configuration.multimeterPopoutMode == .mini)
+    #expect(viewModel.configuration.usbcPopoutMode == .compact)
+}
+
+@MainActor
+@Test
 func renderPauseToggleChangesStateAndStatus() {
     let viewModel = DashboardViewModel()
 

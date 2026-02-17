@@ -87,6 +87,8 @@ func dashboardPreferencesDoNotCreateValidationErrors() {
     config.runtimeLogCaptureEnabled = false
     config.dashboardBeepMasterEnabled = false
     config.pcBeepSoundPreset = .funk
+    config.multimeterPopoutMode = .mini
+    config.usbcPopoutMode = .compact
 
     let result = AppConfigurationValidator.validate(config)
 

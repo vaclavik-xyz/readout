@@ -39,6 +39,8 @@ func saveAndLoadRoundTrip() async throws {
     config.runtimeLogCaptureEnabled = false
     config.dashboardBeepMasterEnabled = false
     config.pcBeepSoundPreset = .sosumi
+    config.multimeterPopoutMode = .mini
+    config.usbcPopoutMode = .compact
 
     try await store.save(config)
     #expect(await store.hasPersistedConfiguration() == true)
@@ -91,11 +93,15 @@ func unknownDashboardEnumValuesFallbackToDefaults() throws {
     let raw: [String: Any] = [
         "dashboard_device_visibility": "unknown-mode",
         "dashboard_theme": "alien",
-        "pc_beep_sound_preset": "custom"
+        "pc_beep_sound_preset": "custom",
+        "multimeter_popout_mode": "x-mode",
+        "usbc_popout_mode": "y-mode"
     ]
 
     let migrated = AppConfiguration.fromDictionary(raw)
     #expect(migrated.dashboardDeviceVisibility == .both)
     #expect(migrated.dashboardTheme == .system)
     #expect(migrated.pcBeepSoundPreset == .system)
+    #expect(migrated.multimeterPopoutMode == .detailed)
+    #expect(migrated.usbcPopoutMode == .detailed)
 }

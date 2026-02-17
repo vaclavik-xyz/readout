@@ -103,12 +103,13 @@ private struct DevicePopoutView: View {
     var body: some View {
         GeometryReader { proxy in
             let size = proxy.size
-            let scale = popoutScale(for: size, kind: kind)
+            let displayMode = viewModel.popoutMode(for: kind)
+            let scale = popoutScale(for: size, kind: kind) * scaleMultiplier(for: displayMode)
 
             VStack(alignment: .leading, spacing: 12 * scale) {
                 HStack {
                     Text(kind == .multimeter ? "Multimeter" : "USB-C")
-                        .font(.system(size: 17 * scale, weight: .bold, design: .rounded))
+                        .font(.system(size: titleFontSize(for: displayMode) * scale, weight: .bold, design: .rounded))
                         .foregroundStyle(.primary)
                     Spacer()
                     statusPill(
@@ -116,42 +117,26 @@ private struct DevicePopoutView: View {
                         scale: scale
                     )
                 }
-
-                if kind == .multimeter {
-                    VStack(alignment: .leading, spacing: 6 * scale) {
-                        Text(viewModel.multimeterPrimary)
-                            .font(.system(size: 40 * scale, weight: .black, design: .rounded))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.65)
-                            .foregroundStyle(.primary)
-                        Text(viewModel.multimeterSecondary)
-                            .font(.system(size: 22 * scale, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                        Text(viewModel.multimeterMode)
-                            .font(.system(size: 13 * scale, weight: .medium, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: 6 * scale) {
-                        Text(viewModel.usbcVoltage)
-                            .font(.system(size: 38 * scale, weight: .black, design: .rounded))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.65)
-                            .foregroundStyle(.primary)
-                        Text(viewModel.usbcCurrent)
-                            .font(.system(size: 22 * scale, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                        Text("\(viewModel.usbcPower)  •  \(viewModel.usbcEnergy)")
-                            .font(.system(size: 12 * scale, weight: .medium, design: .rounded))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                }
-
+                content(for: displayMode, scale: scale)
             }
             .padding(14 * scale)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(popoutBackground)
+            .contextMenu {
+                Menu("Display Mode") {
+                    ForEach(DevicePopoutDisplayMode.allCases) { mode in
+                        Button {
+                            viewModel.setPopoutMode(mode, for: kind)
+                        } label: {
+                            if mode == displayMode {
+                                Label(mode.title, systemImage: "checkmark")
+                            } else {
+                                Text(mode.title)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -169,6 +154,122 @@ private struct DevicePopoutView: View {
         let widthRatio = size.width / max(1, base.width)
         let heightRatio = size.height / max(1, base.height)
         return min(max(0.70, min(widthRatio, heightRatio)), 2.0)
+    }
+
+    private func scaleMultiplier(for mode: DevicePopoutDisplayMode) -> CGFloat {
+        switch mode {
+        case .mini:
+            return 1.08
+        case .compact:
+            return 0.96
+        case .detailed:
+            return 1.0
+        }
+    }
+
+    private func titleFontSize(for mode: DevicePopoutDisplayMode) -> CGFloat {
+        switch mode {
+        case .mini:
+            return 15
+        case .compact, .detailed:
+            return 17
+        }
+    }
+
+    @ViewBuilder
+    private func content(for mode: DevicePopoutDisplayMode, scale: CGFloat) -> some View {
+        switch mode {
+        case .mini:
+            VStack(alignment: .leading, spacing: 6 * scale) {
+                Text(primaryValueText)
+                    .font(.system(size: primaryFontSize(for: mode) * scale, weight: .black, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+                    .foregroundStyle(.primary)
+                Text(secondaryValueText)
+                    .font(.system(size: secondaryFontSize(for: mode) * scale, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+
+        case .compact, .detailed:
+            VStack(alignment: .leading, spacing: 6 * scale) {
+                Text(primaryValueText)
+                    .font(.system(size: primaryFontSize(for: mode) * scale, weight: .black, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+                    .foregroundStyle(.primary)
+                Text(secondaryValueText)
+                    .font(.system(size: secondaryFontSize(for: mode) * scale, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                Text(tertiaryValueText(for: mode))
+                    .font(.system(size: tertiaryFontSize(for: mode) * scale, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(mode == .compact ? 1 : 2)
+            }
+        }
+    }
+
+    private var primaryValueText: String {
+        switch kind {
+        case .multimeter:
+            return viewModel.multimeterPrimary
+        case .usbc:
+            return viewModel.usbcVoltage
+        }
+    }
+
+    private var secondaryValueText: String {
+        switch kind {
+        case .multimeter:
+            return viewModel.multimeterSecondary
+        case .usbc:
+            return viewModel.usbcCurrent
+        }
+    }
+
+    private func tertiaryValueText(for mode: DevicePopoutDisplayMode) -> String {
+        switch kind {
+        case .multimeter:
+            return viewModel.multimeterMode
+        case .usbc:
+            if mode == .compact {
+                return viewModel.usbcPower
+            }
+            return "\(viewModel.usbcPower)  •  \(viewModel.usbcEnergy)"
+        }
+    }
+
+    private func primaryFontSize(for mode: DevicePopoutDisplayMode) -> CGFloat {
+        switch mode {
+        case .mini:
+            return kind == .multimeter ? 44 : 42
+        case .compact:
+            return kind == .multimeter ? 38 : 36
+        case .detailed:
+            return kind == .multimeter ? 40 : 38
+        }
+    }
+
+    private func secondaryFontSize(for mode: DevicePopoutDisplayMode) -> CGFloat {
+        switch mode {
+        case .mini:
+            return 18
+        case .compact:
+            return 19
+        case .detailed:
+            return 22
+        }
+    }
+
+    private func tertiaryFontSize(for mode: DevicePopoutDisplayMode) -> CGFloat {
+        switch mode {
+        case .mini:
+            return 0
+        case .compact:
+            return 11
+        case .detailed:
+            return 12
+        }
     }
 
     private func statusPill(_ status: DeviceUIState, scale: CGFloat) -> some View {
