@@ -136,6 +136,23 @@ final class DevicePopoutManager: ObservableObject {
         panels[kind]?.close()
         #endif
     }
+
+    func syncOpenWindowsFromViewModel(_ viewModel: DashboardViewModel) {
+        #if canImport(AppKit)
+        for kind in [DevicePopoutKind.multimeter, .usbc] {
+            guard let panel = panels[kind], let persistedFrame = viewModel.popoutFrame(for: kind) else {
+                continue
+            }
+            let frame = NSRect(
+                x: persistedFrame.x,
+                y: persistedFrame.y,
+                width: persistedFrame.width,
+                height: persistedFrame.height
+            )
+            panel.setFrame(frame, display: true, animate: false)
+        }
+        #endif
+    }
 }
 
 #if canImport(AppKit)

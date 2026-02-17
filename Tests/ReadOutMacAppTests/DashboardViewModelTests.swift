@@ -120,6 +120,37 @@ func popoutFramePersistsToConfiguration() {
 
 @MainActor
 @Test
+func popoutLayoutProfileSaveApplyAndDeleteFlow() {
+    let viewModel = DashboardViewModel()
+    let multimeterFrame = AppConfiguration.PopoutWindowFrame(x: 90, y: 120, width: 420, height: 240)
+    let usbcFrame = AppConfiguration.PopoutWindowFrame(x: 560, y: 140, width: 430, height: 250)
+
+    viewModel.setPopoutMode(.mini, for: .multimeter)
+    viewModel.setPopoutMode(.compact, for: .usbc)
+    viewModel.setPopoutFrame(multimeterFrame, for: .multimeter)
+    viewModel.setPopoutFrame(usbcFrame, for: .usbc)
+    viewModel.saveCurrentPopoutLayoutProfile(named: "Desk")
+
+    #expect(viewModel.popoutLayoutProfiles.count == 1)
+    #expect(viewModel.activePopoutLayoutProfileName == "Desk")
+
+    viewModel.setPopoutMode(.detailed, for: .multimeter)
+    viewModel.setPopoutMode(.detailed, for: .usbc)
+    _ = viewModel.applyPopoutLayoutProfile(named: "Desk")
+
+    #expect(viewModel.multimeterPopoutMode == .mini)
+    #expect(viewModel.usbcPopoutMode == .compact)
+    #expect(viewModel.popoutFrame(for: .multimeter) == multimeterFrame)
+    #expect(viewModel.popoutFrame(for: .usbc) == usbcFrame)
+    #expect(viewModel.activePopoutLayoutProfileName == "Desk")
+
+    viewModel.deletePopoutLayoutProfile(named: "Desk")
+    #expect(viewModel.popoutLayoutProfiles.isEmpty)
+    #expect(viewModel.activePopoutLayoutProfileName.isEmpty)
+}
+
+@MainActor
+@Test
 func renderPauseToggleChangesStateAndStatus() {
     let viewModel = DashboardViewModel()
 

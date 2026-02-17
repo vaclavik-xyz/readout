@@ -44,6 +44,23 @@ func saveAndLoadRoundTrip() async throws {
     config.multimeterPopoutFrame = .init(x: 120, y: 160, width: 480, height: 260)
     config.usbcPopoutFrame = .init(x: 640, y: 200, width: 500, height: 280)
     config.popoutAlarmEmphasisEnabled = true
+    config.popoutLayoutProfiles = [
+        .init(
+            name: "Desk",
+            multimeterMode: .mini,
+            usbcMode: .compact,
+            multimeterFrame: .init(x: 100, y: 120, width: 420, height: 220),
+            usbcFrame: .init(x: 560, y: 120, width: 440, height: 230)
+        ),
+        .init(
+            name: "Wallboard",
+            multimeterMode: .detailed,
+            usbcMode: .detailed,
+            multimeterFrame: .init(x: 80, y: 80, width: 520, height: 300),
+            usbcFrame: .init(x: 620, y: 80, width: 540, height: 320)
+        )
+    ]
+    config.activePopoutLayoutProfileName = "Desk"
 
     try await store.save(config)
     #expect(await store.hasPersistedConfiguration() == true)
@@ -102,7 +119,31 @@ func unknownDashboardEnumValuesFallbackToDefaults() throws {
         "multimeter_popout_x": 100,
         "multimeter_popout_y": 100,
         "multimeter_popout_width": -10,
-        "multimeter_popout_height": 80
+        "multimeter_popout_height": 80,
+        "active_popout_layout_profile": "invalid",
+        "popout_layout_profiles": [
+            [
+                "name": " ",
+                "multimeter_mode": "mini",
+                "usbc_mode": "compact"
+            ],
+            [
+                "name": "Desk",
+                "multimeter_mode": "unknown",
+                "usbc_mode": "weird",
+                "multimeter_width": 80,
+                "multimeter_height": 10
+            ],
+            [
+                "name": "Desk",
+                "multimeter_mode": "mini",
+                "usbc_mode": "compact",
+                "multimeter_x": 100,
+                "multimeter_y": 120,
+                "multimeter_width": 420,
+                "multimeter_height": 220
+            ]
+        ]
     ]
 
     let migrated = AppConfiguration.fromDictionary(raw)
@@ -113,4 +154,10 @@ func unknownDashboardEnumValuesFallbackToDefaults() throws {
     #expect(migrated.usbcPopoutMode == .detailed)
     #expect(migrated.multimeterPopoutFrame == nil)
     #expect(migrated.usbcPopoutFrame == nil)
+    #expect(migrated.popoutLayoutProfiles.count == 1)
+    #expect(migrated.popoutLayoutProfiles[0].name == "Desk")
+    #expect(migrated.popoutLayoutProfiles[0].multimeterMode == .mini)
+    #expect(migrated.popoutLayoutProfiles[0].usbcMode == .compact)
+    #expect(migrated.popoutLayoutProfiles[0].multimeterFrame != nil)
+    #expect(migrated.activePopoutLayoutProfileName.isEmpty)
 }

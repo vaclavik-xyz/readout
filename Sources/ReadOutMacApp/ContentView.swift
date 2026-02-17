@@ -11,6 +11,8 @@ struct ContentView: View {
     let popoutManager: DevicePopoutManager
     @State private var selectedMultimeterTimestamp: Date?
     @State private var selectedUsbCTimestamp: Date?
+    @State private var isSavePopoutProfilePresented: Bool = false
+    @State private var popoutProfileNameDraft: String = ""
 
     private var palette: DashboardPalette {
         DashboardThemePalette.palette(for: viewModel.theme)
@@ -73,6 +75,33 @@ struct ContentView: View {
                 onSave: { viewModel.saveFirstRunWizard() }
             )
             .frame(minWidth: 760, minHeight: 620)
+        }
+        .sheet(isPresented: $isSavePopoutProfilePresented) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Save Pop-out Layout")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(palette.primaryText)
+                Text("Name this layout profile for quick restore.")
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(palette.secondaryText)
+
+                TextField("Layout name", text: $popoutProfileNameDraft)
+                    .textFieldStyle(.roundedBorder)
+
+                HStack {
+                    Spacer()
+                    Button("Cancel") {
+                        isSavePopoutProfilePresented = false
+                    }
+                    Button("Save") {
+                        viewModel.saveCurrentPopoutLayoutProfile(named: popoutProfileNameDraft)
+                        isSavePopoutProfilePresented = false
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding(18)
+            .frame(minWidth: 360)
         }
     }
 
@@ -168,6 +197,39 @@ struct ContentView: View {
                         }
                         Button("Close USB-C Pop-out") {
                             popoutManager.close(.usbc)
+                        }
+                        Menu("Pop-out Layout Profiles") {
+                            Button("Save Current Layout...") {
+                                popoutProfileNameDraft = viewModel.suggestedPopoutLayoutProfileName()
+                                isSavePopoutProfilePresented = true
+                            }
+
+                            if viewModel.hasPopoutLayoutProfiles {
+                                Divider()
+                                ForEach(viewModel.popoutLayoutProfiles, id: \.name) { profile in
+                                    Button {
+                                        if viewModel.applyPopoutLayoutProfile(named: profile.name) {
+                                            popoutManager.syncOpenWindowsFromViewModel(viewModel)
+                                        }
+                                    } label: {
+                                        if viewModel.isActivePopoutLayoutProfile(profile.name) {
+                                            Label("Apply \(profile.name)", systemImage: "checkmark")
+                                        } else {
+                                            Text("Apply \(profile.name)")
+                                        }
+                                    }
+                                }
+                                Divider()
+                                Menu("Delete Profile") {
+                                    ForEach(viewModel.popoutLayoutProfiles, id: \.name) { profile in
+                                        Button("Delete \(profile.name)") {
+                                            viewModel.deletePopoutLayoutProfile(named: profile.name)
+                                        }
+                                    }
+                                }
+                            } else {
+                                Text("No saved profiles")
+                            }
                         }
                         Menu("Multimeter Pop-out Mode") {
                             ForEach(DevicePopoutDisplayMode.allCases) { mode in

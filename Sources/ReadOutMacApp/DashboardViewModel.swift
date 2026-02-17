@@ -83,6 +83,8 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var isAlarmSilenced: Bool = false
     @Published private(set) var alarmSilenceRemainingText: String = ""
     @Published private(set) var alarmControlSummary: String = "Live"
+    @Published private(set) var popoutLayoutProfiles: [AppConfiguration.PopoutLayoutProfile] = []
+    @Published private(set) var activePopoutLayoutProfileName: String = ""
     @Published var multimeterPopoutMode: DevicePopoutDisplayMode = .detailed
     @Published var usbcPopoutMode: DevicePopoutDisplayMode = .detailed
     @Published var isRenderPaused: Bool = false
@@ -513,12 +515,30 @@ final class DashboardViewModel: ObservableObject {
         }
     }
 
+    var hasPopoutLayoutProfiles: Bool {
+        !popoutLayoutProfiles.isEmpty
+    }
+
+    func isActivePopoutLayoutProfile(_ name: String) -> Bool {
+        activePopoutLayoutProfileName == name
+    }
+
+    func suggestedPopoutLayoutProfileName() -> String {
+        let existing = Set(popoutLayoutProfiles.map(\.name))
+        var index = 1
+        while existing.contains("Layout \(index)") {
+            index += 1
+        }
+        return "Layout \(index)"
+    }
+
     func setPopoutMode(_ mode: DevicePopoutDisplayMode, for kind: DevicePopoutKind) {
         switch kind {
         case .multimeter:
             guard multimeterPopoutMode != mode else {
                 return
             }
+            clearActivePopoutLayoutProfile()
             multimeterPopoutMode = mode
             configuration.multimeterPopoutMode = mode.configurationValue
             editableConfiguration.multimeterPopoutMode = mode.configurationValue
@@ -526,6 +546,7 @@ final class DashboardViewModel: ObservableObject {
             guard usbcPopoutMode != mode else {
                 return
             }
+            clearActivePopoutLayoutProfile()
             usbcPopoutMode = mode
             configuration.usbcPopoutMode = mode.configurationValue
             editableConfiguration.usbcPopoutMode = mode.configurationValue
@@ -548,16 +569,89 @@ final class DashboardViewModel: ObservableObject {
             guard configuration.multimeterPopoutFrame != frame else {
                 return
             }
+            clearActivePopoutLayoutProfile()
             configuration.multimeterPopoutFrame = frame
             editableConfiguration.multimeterPopoutFrame = frame
         case .usbc:
             guard configuration.usbcPopoutFrame != frame else {
                 return
             }
+            clearActivePopoutLayoutProfile()
             configuration.usbcPopoutFrame = frame
             editableConfiguration.usbcPopoutFrame = frame
         }
         persistConfigurationSilently()
+    }
+
+    func saveCurrentPopoutLayoutProfile(named rawName: String) {
+        guard let name = normalizedPopoutLayoutProfileName(rawName) else {
+            setStatusMessage("Pop-out profile name cannot be empty.", level: .warning)
+            return
+        }
+
+        let profile = AppConfiguration.PopoutLayoutProfile(
+            name: name,
+            multimeterMode: multimeterPopoutMode.configurationValue,
+            usbcMode: usbcPopoutMode.configurationValue,
+            multimeterFrame: configuration.multimeterPopoutFrame,
+            usbcFrame: configuration.usbcPopoutFrame
+        )
+
+        if let existing = popoutLayoutProfiles.firstIndex(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+            popoutLayoutProfiles[existing] = profile
+        } else {
+            popoutLayoutProfiles.append(profile)
+        }
+
+        activePopoutLayoutProfileName = name
+        configuration.popoutLayoutProfiles = popoutLayoutProfiles
+        editableConfiguration.popoutLayoutProfiles = popoutLayoutProfiles
+        configuration.activePopoutLayoutProfileName = name
+        editableConfiguration.activePopoutLayoutProfileName = name
+        persistConfigurationSilently()
+        setStatusMessage("Pop-out profile saved: \(name)")
+    }
+
+    func applyPopoutLayoutProfile(named name: String) -> Bool {
+        guard let profile = popoutLayoutProfiles.first(where: { $0.name == name }) else {
+            setStatusMessage("Pop-out profile not found: \(name)", level: .warning)
+            return false
+        }
+
+        multimeterPopoutMode = DevicePopoutDisplayMode(configurationValue: profile.multimeterMode)
+        usbcPopoutMode = DevicePopoutDisplayMode(configurationValue: profile.usbcMode)
+        configuration.multimeterPopoutMode = profile.multimeterMode
+        configuration.usbcPopoutMode = profile.usbcMode
+        editableConfiguration.multimeterPopoutMode = profile.multimeterMode
+        editableConfiguration.usbcPopoutMode = profile.usbcMode
+        configuration.multimeterPopoutFrame = profile.multimeterFrame
+        configuration.usbcPopoutFrame = profile.usbcFrame
+        editableConfiguration.multimeterPopoutFrame = profile.multimeterFrame
+        editableConfiguration.usbcPopoutFrame = profile.usbcFrame
+        activePopoutLayoutProfileName = profile.name
+        configuration.activePopoutLayoutProfileName = profile.name
+        editableConfiguration.activePopoutLayoutProfileName = profile.name
+        configuration.popoutLayoutProfiles = popoutLayoutProfiles
+        editableConfiguration.popoutLayoutProfiles = popoutLayoutProfiles
+        persistConfigurationSilently()
+        setStatusMessage("Pop-out profile applied: \(profile.name)")
+        return true
+    }
+
+    func deletePopoutLayoutProfile(named name: String) {
+        guard let index = popoutLayoutProfiles.firstIndex(where: { $0.name == name }) else {
+            return
+        }
+        popoutLayoutProfiles.remove(at: index)
+        if activePopoutLayoutProfileName == name {
+            activePopoutLayoutProfileName = ""
+            configuration.activePopoutLayoutProfileName = ""
+            editableConfiguration.activePopoutLayoutProfileName = ""
+        }
+        configuration.popoutLayoutProfiles = popoutLayoutProfiles
+        editableConfiguration.popoutLayoutProfiles = popoutLayoutProfiles
+        persistConfigurationSilently()
+        setStatusMessage("Pop-out profile deleted: \(name)")
     }
 
     func resetVisualState() {
@@ -986,6 +1080,12 @@ final class DashboardViewModel: ObservableObject {
         isRuntimeLogPanelVisible = config.runtimeLogPanelVisible
         isRuntimeLogCaptureEnabled = config.runtimeLogCaptureEnabled
         isDashboardBeepEnabled = config.dashboardBeepMasterEnabled
+        popoutLayoutProfiles = config.popoutLayoutProfiles
+        if popoutLayoutProfiles.contains(where: { $0.name == config.activePopoutLayoutProfileName }) {
+            activePopoutLayoutProfileName = config.activePopoutLayoutProfileName
+        } else {
+            activePopoutLayoutProfileName = ""
+        }
         multimeterPopoutMode = DevicePopoutDisplayMode(configurationValue: config.multimeterPopoutMode)
         usbcPopoutMode = DevicePopoutDisplayMode(configurationValue: config.usbcPopoutMode)
     }
@@ -1007,6 +1107,23 @@ final class DashboardViewModel: ObservableObject {
             alarmMuted: isAlarmSilenced || isAcknowledgedForAlert
         )
         pcBeepController.setBeeping(shouldBeep)
+    }
+
+    private func clearActivePopoutLayoutProfile() {
+        guard !activePopoutLayoutProfileName.isEmpty else {
+            return
+        }
+        activePopoutLayoutProfileName = ""
+        configuration.activePopoutLayoutProfileName = ""
+        editableConfiguration.activePopoutLayoutProfileName = ""
+    }
+
+    private func normalizedPopoutLayoutProfileName(_ rawName: String) -> String? {
+        let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+        return String(trimmed.prefix(48))
     }
 
     private func reconcileAlarmAcknowledge(

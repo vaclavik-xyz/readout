@@ -46,6 +46,28 @@ public struct AppConfiguration: Sendable, Equatable {
         }
     }
 
+    public struct PopoutLayoutProfile: Sendable, Equatable, Codable {
+        public var name: String
+        public var multimeterMode: PopoutDisplayMode
+        public var usbcMode: PopoutDisplayMode
+        public var multimeterFrame: PopoutWindowFrame?
+        public var usbcFrame: PopoutWindowFrame?
+
+        public init(
+            name: String,
+            multimeterMode: PopoutDisplayMode,
+            usbcMode: PopoutDisplayMode,
+            multimeterFrame: PopoutWindowFrame?,
+            usbcFrame: PopoutWindowFrame?
+        ) {
+            self.name = name
+            self.multimeterMode = multimeterMode
+            self.usbcMode = usbcMode
+            self.multimeterFrame = multimeterFrame
+            self.usbcFrame = usbcFrame
+        }
+    }
+
     public var multimeterPort: String = ""
     public var usbcPort: String = ""
     public var multimeterEnabled: Bool = true
@@ -95,6 +117,8 @@ public struct AppConfiguration: Sendable, Equatable {
     public var multimeterPopoutFrame: PopoutWindowFrame?
     public var usbcPopoutFrame: PopoutWindowFrame?
     public var popoutAlarmEmphasisEnabled: Bool = false
+    public var popoutLayoutProfiles: [PopoutLayoutProfile] = []
+    public var activePopoutLayoutProfileName: String = ""
 
     public init() {}
 
@@ -181,6 +205,31 @@ public struct AppConfiguration: Sendable, Equatable {
             }
             return PopoutWindowFrame(x: x, y: y, width: width, height: height)
         }
+        func popoutFrame(from dictionary: [String: Any], prefix: String) -> PopoutWindowFrame? {
+            func optionalDouble(_ key: String) -> Double? {
+                if let d = dictionary[key] as? Double {
+                    return d
+                }
+                if let i = dictionary[key] as? Int {
+                    return Double(i)
+                }
+                return nil
+            }
+
+            guard
+                let x = optionalDouble("\(prefix)_x"),
+                let y = optionalDouble("\(prefix)_y"),
+                let width = optionalDouble("\(prefix)_width"),
+                let height = optionalDouble("\(prefix)_height")
+            else {
+                return nil
+            }
+
+            guard width >= 120, height >= 90 else {
+                return nil
+            }
+            return PopoutWindowFrame(x: x, y: y, width: width, height: height)
+        }
 
         config.multimeterPort = string("multimeter_port", default: config.multimeterPort)
         config.usbcPort = string("usbc_port", default: config.usbcPort)
@@ -230,6 +279,40 @@ public struct AppConfiguration: Sendable, Equatable {
         config.multimeterPopoutFrame = popoutFrame(prefix: "multimeter_popout")
         config.usbcPopoutFrame = popoutFrame(prefix: "usbc_popout")
         config.popoutAlarmEmphasisEnabled = bool("popout_alarm_emphasis_enabled", default: config.popoutAlarmEmphasisEnabled)
+        if let profileObjects = data["popout_layout_profiles"] as? [[String: Any]] {
+            var parsed: [PopoutLayoutProfile] = []
+            parsed.reserveCapacity(profileObjects.count)
+            for profileObject in profileObjects {
+                let rawName = (profileObject["name"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                guard !rawName.isEmpty else {
+                    continue
+                }
+                let name = String(rawName.prefix(48))
+                let mmModeRaw = (profileObject["multimeter_mode"] as? String ?? "").lowercased()
+                let usbcModeRaw = (profileObject["usbc_mode"] as? String ?? "").lowercased()
+                let profile = PopoutLayoutProfile(
+                    name: name,
+                    multimeterMode: PopoutDisplayMode(rawValue: mmModeRaw) ?? .detailed,
+                    usbcMode: PopoutDisplayMode(rawValue: usbcModeRaw) ?? .detailed,
+                    multimeterFrame: popoutFrame(from: profileObject, prefix: "multimeter"),
+                    usbcFrame: popoutFrame(from: profileObject, prefix: "usbc")
+                )
+                if let existing = parsed.firstIndex(where: { $0.name == name }) {
+                    parsed[existing] = profile
+                } else {
+                    parsed.append(profile)
+                }
+            }
+            config.popoutLayoutProfiles = parsed
+        }
+        let activeProfileName = string("active_popout_layout_profile", default: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if config.popoutLayoutProfiles.contains(where: { $0.name == activeProfileName }) {
+            config.activePopoutLayoutProfileName = activeProfileName
+        } else {
+            config.activePopoutLayoutProfileName = ""
+        }
 
         // Legacy migrations from Python implementation.
         if config.multimeterPort.isEmpty {
@@ -303,6 +386,7 @@ public struct AppConfiguration: Sendable, Equatable {
             "multimeter_popout_mode": multimeterPopoutMode.rawValue,
             "usbc_popout_mode": usbcPopoutMode.rawValue,
             "popout_alarm_emphasis_enabled": popoutAlarmEmphasisEnabled,
+            "active_popout_layout_profile": activePopoutLayoutProfileName,
         ]
 
         if let frame = multimeterPopoutFrame {
@@ -317,6 +401,29 @@ public struct AppConfiguration: Sendable, Equatable {
             dictionary["usbc_popout_y"] = frame.y
             dictionary["usbc_popout_width"] = frame.width
             dictionary["usbc_popout_height"] = frame.height
+        }
+
+        if !popoutLayoutProfiles.isEmpty {
+            dictionary["popout_layout_profiles"] = popoutLayoutProfiles.map { profile in
+                var profileDictionary: [String: Any] = [
+                    "name": profile.name,
+                    "multimeter_mode": profile.multimeterMode.rawValue,
+                    "usbc_mode": profile.usbcMode.rawValue,
+                ]
+                if let frame = profile.multimeterFrame {
+                    profileDictionary["multimeter_x"] = frame.x
+                    profileDictionary["multimeter_y"] = frame.y
+                    profileDictionary["multimeter_width"] = frame.width
+                    profileDictionary["multimeter_height"] = frame.height
+                }
+                if let frame = profile.usbcFrame {
+                    profileDictionary["usbc_x"] = frame.x
+                    profileDictionary["usbc_y"] = frame.y
+                    profileDictionary["usbc_width"] = frame.width
+                    profileDictionary["usbc_height"] = frame.height
+                }
+                return profileDictionary
+            }
         }
 
         return dictionary
