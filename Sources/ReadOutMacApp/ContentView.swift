@@ -177,12 +177,20 @@ struct ContentView: View {
                     .foregroundStyle(.white.opacity(0.6))
             }
 
+#if DEBUG
+            Text(viewModel.chartPerformanceSummary)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.55))
+                .frame(maxWidth: .infinity, alignment: .leading)
+#endif
+
             HStack(spacing: 14) {
                 chartCard(
                     title: "Multimeter Trend",
                     color: .mint,
                     samples: viewModel.displayedMultimeterSamples,
                     markers: viewModel.displayedAlarmMarkers,
+                    reconnectMarkers: viewModel.displayedMultimeterConnectionMarkers,
                     highThreshold: viewModel.configuration.dcvHighAlarmEnabled
                         ? viewModel.configuration.dcvHighAlarmValue
                         : nil,
@@ -195,6 +203,7 @@ struct ContentView: View {
                     color: .orange,
                     samples: viewModel.displayedUsbCSamples,
                     markers: [],
+                    reconnectMarkers: viewModel.displayedUsbCConnectionMarkers,
                     highThreshold: nil,
                     lowThreshold: nil
                 )
@@ -337,6 +346,7 @@ struct ContentView: View {
         color: Color,
         samples: [ChartSample],
         markers: [AlarmTimelineMarker],
+        reconnectMarkers: [ConnectionOverlayMarker],
         highThreshold: Double?,
         lowThreshold: Double?
     ) -> some View {
@@ -388,6 +398,19 @@ struct ContentView: View {
                                 Text(alarmMarkerLabel(marker.state))
                                     .font(.system(size: 9, weight: .bold, design: .rounded))
                                     .foregroundStyle(alarmMarkerColor(marker.state))
+                            }
+                        }
+                }
+
+                ForEach(reconnectMarkers) { marker in
+                    RuleMark(x: .value("Connection Event", marker.timestamp))
+                        .foregroundStyle(connectionOverlayColor(marker.state).opacity(0.85))
+                        .lineStyle(StrokeStyle(lineWidth: 1.0, dash: [2, 4]))
+                        .annotation(position: .top, alignment: .trailing) {
+                            if reconnectMarkers.count <= 8 {
+                                Text(connectionOverlayLabel(marker.state))
+                                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                                    .foregroundStyle(connectionOverlayColor(marker.state))
                             }
                         }
                 }
@@ -520,6 +543,28 @@ struct ContentView: View {
             return .red
         case .lowAlarm:
             return .yellow
+        }
+    }
+
+    private func connectionOverlayLabel(_ state: ConnectionOverlayState) -> String {
+        switch state {
+        case .reconnecting:
+            return "RETRY"
+        case .error:
+            return "ERROR"
+        case .restored:
+            return "RESTORED"
+        }
+    }
+
+    private func connectionOverlayColor(_ state: ConnectionOverlayState) -> Color {
+        switch state {
+        case .reconnecting:
+            return .cyan
+        case .error:
+            return .red
+        case .restored:
+            return .green
         }
     }
 }

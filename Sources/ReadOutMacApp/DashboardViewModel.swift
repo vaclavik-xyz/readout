@@ -21,7 +21,19 @@ final class DashboardViewModel: ObservableObject {
     @Published var multimeterSamples: [ChartSample] = []
     @Published var usbcSamples: [ChartSample] = []
     @Published var alarmMarkers: [AlarmTimelineMarker] = []
-    @Published var selectedChartRange: ChartRangePreset = .twoMinutes
+    @Published private(set) var displayedMultimeterSamples: [ChartSample] = []
+    @Published private(set) var displayedUsbCSamples: [ChartSample] = []
+    @Published private(set) var displayedAlarmMarkers: [AlarmTimelineMarker] = []
+    @Published private(set) var displayedMultimeterConnectionMarkers: [ConnectionOverlayMarker] = []
+    @Published private(set) var displayedUsbCConnectionMarkers: [ConnectionOverlayMarker] = []
+    @Published var selectedChartRange: ChartRangePreset = .twoMinutes {
+        didSet {
+            refreshDisplayedCharts(reason: "range_changed")
+        }
+    }
+#if DEBUG
+    @Published private(set) var chartPerformanceSummary: String = "Chart pipeline: idle"
+#endif
 
     @Published var configuration: AppConfiguration = .init()
     @Published var editableConfiguration: AppConfiguration = .init()
@@ -39,6 +51,7 @@ final class DashboardViewModel: ObservableObject {
     private let pcBeepController = PcBeepController()
     private var recoveryTask: Task<Void, Never>?
     private var connectionTimeline: [ConnectionTimelineEntry] = []
+    private var chartConnectionTimeline: [ConnectionTimelineEntry] = []
     private var healthSnapshots: [RuntimeHealthSnapshot] = []
     private var reconnectCount = 0
     private var runtimeErrorCount = 0
@@ -57,6 +70,7 @@ final class DashboardViewModel: ObservableObject {
         configurationStore = ConfigurationStore(configFileURL: configURL)
         runtimeLogStore = RuntimeLogStore(logDirectoryURL: runtimeLogDirectoryURL)
         setStatusMessage("Config: \(configURL.path)")
+        refreshDisplayedCharts(reason: "init")
 
         Task {
             await bootstrap()
@@ -119,6 +133,8 @@ final class DashboardViewModel: ObservableObject {
         multimeterSamples.removeAll(keepingCapacity: true)
         usbcSamples.removeAll(keepingCapacity: true)
         alarmMarkers.removeAll(keepingCapacity: true)
+        chartConnectionTimeline.removeAll(keepingCapacity: true)
+        refreshDisplayedCharts(reason: "charts_cleared")
         setStatusMessage("Charts cleared")
     }
 
@@ -207,6 +223,8 @@ final class DashboardViewModel: ObservableObject {
 
         configuration = newConfig
         isSettingsPresented = false
+        trimChartsIfNeeded()
+        refreshDisplayedCharts(reason: "settings_saved")
 
         Task {
             do {
@@ -238,9 +256,11 @@ final class DashboardViewModel: ObservableObject {
             editableConfiguration = normalized
             setStatusMessage("Configuration loaded")
             appendHealthSnapshot(reason: "bootstrap_loaded")
+            refreshDisplayedCharts(reason: "bootstrap_loaded")
         } catch {
             setStatusMessage("Failed to load config: \(error.localizedDescription)", level: .error)
             appendHealthSnapshot(reason: "bootstrap_load_failed")
+            refreshDisplayedCharts(reason: "bootstrap_load_failed")
         }
     }
 
@@ -318,6 +338,8 @@ final class DashboardViewModel: ObservableObject {
             multimeterSamples.append(ChartSample(timestamp: measurement.timestamp, value: value))
             trimChartsIfNeeded()
         }
+
+        refreshDisplayedCharts(reason: "multimeter_measurement")
     }
 
     private func handleUsbCMeasurement(_ measurement: DeviceMeasurement) {
@@ -344,6 +366,7 @@ final class DashboardViewModel: ObservableObject {
         let energyMWh = measurement.energyMWh.map { String(format: "%.1f", $0) } ?? "---"
         let energyMAh = measurement.energyMAh.map { String(format: "%.1f", $0) } ?? "---"
         usbcEnergy = "Energy: \(energyMWh) mWh | \(energyMAh) mAh"
+        refreshDisplayedCharts(reason: "usbc_measurement")
     }
 
     private func refreshRuntimeStateFlag() {
@@ -361,22 +384,6 @@ final class DashboardViewModel: ObservableObject {
         if usbcSamples.count > maxSamples {
             usbcSamples.removeFirst(usbcSamples.count - maxSamples)
         }
-    }
-
-    var displayedMultimeterSamples: [ChartSample] {
-        downsampleForDisplay(multimeterSamples)
-    }
-
-    var displayedUsbCSamples: [ChartSample] {
-        downsampleForDisplay(usbcSamples)
-    }
-
-    var displayedAlarmMarkers: [AlarmTimelineMarker] {
-        guard let duration = selectedChartRange.durationSeconds else {
-            return alarmMarkers
-        }
-        let threshold = Date().addingTimeInterval(-duration)
-        return alarmMarkers.filter { $0.timestamp >= threshold }
     }
 
     private func runRecoverySequence() async {
@@ -493,16 +500,87 @@ final class DashboardViewModel: ObservableObject {
         ]
     }
 
-    private func downsampleForDisplay(_ samples: [ChartSample]) -> [ChartSample] {
-        let filtered = ChartSamplingService.filtered(
-            samples: samples,
+    private func refreshDisplayedCharts(reason: String) {
+        let now = Date()
+        let multimeterPipeline = ChartPipelineService.process(
+            samples: multimeterSamples,
             range: selectedChartRange,
-            now: Date()
-        )
-        return ChartSamplingService.downsampleMinMax(
-            samples: filtered,
+            now: now,
             maxPoints: 280
         )
+        let usbCPipeline = ChartPipelineService.process(
+            samples: usbcSamples,
+            range: selectedChartRange,
+            now: now,
+            maxPoints: 280
+        )
+
+        displayedMultimeterSamples = multimeterPipeline.samples
+        displayedUsbCSamples = usbCPipeline.samples
+        displayedAlarmMarkers = alarmMarkersForDisplay(now: now)
+        displayedMultimeterConnectionMarkers = connectionMarkersForDisplay(device: "multimeter", now: now)
+        displayedUsbCConnectionMarkers = connectionMarkersForDisplay(device: "usbc", now: now)
+
+#if DEBUG
+        chartPerformanceSummary = String(
+            format: "Pipeline %@ | MM %d→%d→%d (%.2fms) | USB-C %d→%d→%d (%.2fms)",
+            reason,
+            multimeterPipeline.metric.sourcePointCount,
+            multimeterPipeline.metric.filteredPointCount,
+            multimeterPipeline.metric.renderedPointCount,
+            multimeterPipeline.metric.processingMilliseconds,
+            usbCPipeline.metric.sourcePointCount,
+            usbCPipeline.metric.filteredPointCount,
+            usbCPipeline.metric.renderedPointCount,
+            usbCPipeline.metric.processingMilliseconds
+        )
+#endif
+    }
+
+    private func alarmMarkersForDisplay(now: Date) -> [AlarmTimelineMarker] {
+        guard let duration = selectedChartRange.durationSeconds else {
+            return alarmMarkers
+        }
+        let threshold = now.addingTimeInterval(-duration)
+        return alarmMarkers.filter { $0.timestamp >= threshold }
+    }
+
+    private func connectionMarkersForDisplay(device: String, now: Date) -> [ConnectionOverlayMarker] {
+        let baseEntries = chartConnectionTimeline.filter { $0.device == device }
+
+        let visibleEntries: [ConnectionTimelineEntry]
+        if let duration = selectedChartRange.durationSeconds {
+            let threshold = now.addingTimeInterval(-duration)
+            visibleEntries = baseEntries.filter { $0.timestamp >= threshold }
+        } else {
+            visibleEntries = baseEntries
+        }
+
+        return visibleEntries.compactMap { entry in
+            guard let state = connectionOverlayState(for: entry) else {
+                return nil
+            }
+
+            return ConnectionOverlayMarker(
+                timestamp: entry.timestamp,
+                state: state,
+                message: entry.message ?? state.rawValue
+            )
+        }
+    }
+
+    private func connectionOverlayState(for entry: ConnectionTimelineEntry) -> ConnectionOverlayState? {
+        let lowered = entry.message?.lowercased() ?? ""
+        if lowered.contains("retrying") {
+            return .reconnecting
+        }
+        if entry.state == .error {
+            return .error
+        }
+        if entry.state == .connected {
+            return .restored
+        }
+        return nil
     }
 
     private func appendAlarmMarkerIfNeeded(
@@ -548,18 +626,24 @@ final class DashboardViewModel: ObservableObject {
             reconnectCount += 1
         }
 
-        connectionTimeline.append(
-            ConnectionTimelineEntry(
-                timestamp: Date(),
-                device: device,
-                state: state,
-                message: message
-            )
+        let entry = ConnectionTimelineEntry(
+            timestamp: Date(),
+            device: device,
+            state: state,
+            message: message
         )
+
+        connectionTimeline.append(entry)
         if connectionTimeline.count > 500 {
             connectionTimeline.removeFirst(connectionTimeline.count - 500)
         }
 
+        chartConnectionTimeline.append(entry)
+        if chartConnectionTimeline.count > 240 {
+            chartConnectionTimeline.removeFirst(chartConnectionTimeline.count - 240)
+        }
+
+        refreshDisplayedCharts(reason: "\(device)_status")
         appendHealthSnapshot(reason: "\(device)_status")
     }
 

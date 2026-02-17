@@ -1,7 +1,7 @@
 import Foundation
 import ReadOutCore
 
-struct ChartSample: Identifiable {
+struct ChartSample: Identifiable, Sendable {
     let id = UUID()
     let timestamp: Date
     let value: Double
@@ -105,5 +105,18 @@ struct AlarmTimelineMarker: Identifiable, Sendable {
     let id = UUID()
     let timestamp: Date
     let state: MeasurementAlertState
+    let message: String
+}
+
+enum ConnectionOverlayState: String, Sendable {
+    case reconnecting
+    case error
+    case restored
+}
+
+struct ConnectionOverlayMarker: Identifiable, Sendable {
+    let id = UUID()
+    let timestamp: Date
+    let state: ConnectionOverlayState
     let message: String
 }
