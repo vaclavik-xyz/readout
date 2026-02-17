@@ -1,5 +1,6 @@
 import Foundation
 import ReadOutCore
+import ReadOutPersistence
 
 protocol ChartTimedMarker: Identifiable {
     var timestamp: Date { get }
@@ -123,4 +124,134 @@ struct ConnectionOverlayMarker: ChartTimedMarker, Sendable {
     let timestamp: Date
     let state: ConnectionOverlayState
     let message: String
+}
+
+enum DashboardDeviceVisibility: String, Sendable, CaseIterable, Identifiable {
+    case both
+    case multimeter
+    case usbc
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .both:
+            return "Both"
+        case .multimeter:
+            return "Multimeter"
+        case .usbc:
+            return "USB-C"
+        }
+    }
+
+    init(configurationValue: AppConfiguration.DashboardDeviceVisibility) {
+        switch configurationValue {
+        case .both:
+            self = .both
+        case .multimeter:
+            self = .multimeter
+        case .usbc:
+            self = .usbc
+        }
+    }
+
+    var configurationValue: AppConfiguration.DashboardDeviceVisibility {
+        switch self {
+        case .both:
+            return .both
+        case .multimeter:
+            return .multimeter
+        case .usbc:
+            return .usbc
+        }
+    }
+}
+
+enum DashboardTheme: String, Sendable, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system:
+            return "System"
+        case .light:
+            return "Light"
+        case .dark:
+            return "Dark"
+        }
+    }
+
+    init(configurationValue: AppConfiguration.DashboardTheme) {
+        switch configurationValue {
+        case .system:
+            self = .system
+        case .light:
+            self = .light
+        case .dark:
+            self = .dark
+        }
+    }
+
+    var configurationValue: AppConfiguration.DashboardTheme {
+        switch self {
+        case .system:
+            return .system
+        case .light:
+            return .light
+        case .dark:
+            return .dark
+        }
+    }
+}
+
+enum MacAlertSoundPreset: String, Sendable, CaseIterable, Identifiable {
+    case system
+    case glass
+    case sosumi
+    case funk
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system:
+            return "System Beep"
+        case .glass:
+            return "Glass"
+        case .sosumi:
+            return "Sosumi"
+        case .funk:
+            return "Funk"
+        }
+    }
+
+    init(configurationValue: AppConfiguration.MacAlertSoundPreset) {
+        switch configurationValue {
+        case .system:
+            self = .system
+        case .glass:
+            self = .glass
+        case .sosumi:
+            self = .sosumi
+        case .funk:
+            self = .funk
+        }
+    }
+
+    var configurationValue: AppConfiguration.MacAlertSoundPreset {
+        switch self {
+        case .system:
+            return .system
+        case .glass:
+            return .glass
+        case .sosumi:
+            return .sosumi
+        case .funk:
+            return .funk
+        }
+    }
 }

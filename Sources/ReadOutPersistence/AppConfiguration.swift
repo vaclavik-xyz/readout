@@ -7,6 +7,25 @@ public struct AppConfiguration: Sendable, Equatable {
         case customTemplate = "CUSTOM_TEMPLATE"
     }
 
+    public enum DashboardDeviceVisibility: String, Sendable, Equatable, Codable, CaseIterable {
+        case both = "both"
+        case multimeter = "multimeter"
+        case usbc = "usbc"
+    }
+
+    public enum DashboardTheme: String, Sendable, Equatable, Codable, CaseIterable {
+        case system = "system"
+        case light = "light"
+        case dark = "dark"
+    }
+
+    public enum MacAlertSoundPreset: String, Sendable, Equatable, Codable, CaseIterable {
+        case system = "system"
+        case glass = "glass"
+        case sosumi = "sosumi"
+        case funk = "funk"
+    }
+
     public var multimeterPort: String = ""
     public var usbcPort: String = ""
     public var multimeterEnabled: Bool = true
@@ -45,6 +64,13 @@ public struct AppConfiguration: Sendable, Equatable {
     public var multimeterCsvLogFilePath: String = ""
     public var usbcCsvLogFilePath: String = ""
 
+    public var dashboardDeviceVisibility: DashboardDeviceVisibility = .both
+    public var dashboardTheme: DashboardTheme = .system
+    public var runtimeLogPanelVisible: Bool = true
+    public var runtimeLogCaptureEnabled: Bool = true
+    public var dashboardBeepMasterEnabled: Bool = true
+    public var pcBeepSoundPreset: MacAlertSoundPreset = .system
+
     public init() {}
 
     public static func fromJSONData(_ data: Data) throws -> AppConfiguration {
@@ -81,6 +107,24 @@ public struct AppConfiguration: Sendable, Equatable {
                 return defaultValue
             }
             return ObsOutputMode(rawValue: raw.uppercased()) ?? defaultValue
+        }
+        func dashboardVisibility(_ key: String, default defaultValue: DashboardDeviceVisibility) -> DashboardDeviceVisibility {
+            guard let raw = data[key] as? String else {
+                return defaultValue
+            }
+            return DashboardDeviceVisibility(rawValue: raw.lowercased()) ?? defaultValue
+        }
+        func dashboardTheme(_ key: String, default defaultValue: DashboardTheme) -> DashboardTheme {
+            guard let raw = data[key] as? String else {
+                return defaultValue
+            }
+            return DashboardTheme(rawValue: raw.lowercased()) ?? defaultValue
+        }
+        func soundPreset(_ key: String, default defaultValue: MacAlertSoundPreset) -> MacAlertSoundPreset {
+            guard let raw = data[key] as? String else {
+                return defaultValue
+            }
+            return MacAlertSoundPreset(rawValue: raw.lowercased()) ?? defaultValue
         }
 
         config.multimeterPort = string("multimeter_port", default: config.multimeterPort)
@@ -120,6 +164,12 @@ public struct AppConfiguration: Sendable, Equatable {
         config.usbcCsvLoggingEnabled = bool("usbc_csv_logging_enabled", default: config.usbcCsvLoggingEnabled)
         config.multimeterCsvLogFilePath = string("multimeter_csv_log_file_path", default: config.multimeterCsvLogFilePath)
         config.usbcCsvLogFilePath = string("usbc_csv_log_file_path", default: config.usbcCsvLogFilePath)
+        config.dashboardDeviceVisibility = dashboardVisibility("dashboard_device_visibility", default: config.dashboardDeviceVisibility)
+        config.dashboardTheme = dashboardTheme("dashboard_theme", default: config.dashboardTheme)
+        config.runtimeLogPanelVisible = bool("runtime_log_panel_visible", default: config.runtimeLogPanelVisible)
+        config.runtimeLogCaptureEnabled = bool("runtime_log_capture_enabled", default: config.runtimeLogCaptureEnabled)
+        config.dashboardBeepMasterEnabled = bool("dashboard_beep_master_enabled", default: config.dashboardBeepMasterEnabled)
+        config.pcBeepSoundPreset = soundPreset("pc_beep_sound_preset", default: config.pcBeepSoundPreset)
 
         // Legacy migrations from Python implementation.
         if config.multimeterPort.isEmpty {
@@ -184,6 +234,12 @@ public struct AppConfiguration: Sendable, Equatable {
             "usbc_csv_logging_enabled": usbcCsvLoggingEnabled,
             "multimeter_csv_log_file_path": multimeterCsvLogFilePath,
             "usbc_csv_log_file_path": usbcCsvLogFilePath,
+            "dashboard_device_visibility": dashboardDeviceVisibility.rawValue,
+            "dashboard_theme": dashboardTheme.rawValue,
+            "runtime_log_panel_visible": runtimeLogPanelVisible,
+            "runtime_log_capture_enabled": runtimeLogCaptureEnabled,
+            "dashboard_beep_master_enabled": dashboardBeepMasterEnabled,
+            "pc_beep_sound_preset": pcBeepSoundPreset.rawValue,
         ]
     }
 }

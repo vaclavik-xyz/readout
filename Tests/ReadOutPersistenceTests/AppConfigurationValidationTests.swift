@@ -77,3 +77,18 @@ func outputQueueParametersMustStayInRange() {
     #expect(result.issues.contains(where: { $0.code == "output_queue_capacity.out_of_range" }))
     #expect(result.issues.contains(where: { $0.code == "output_queue_retries.out_of_range" }))
 }
+
+@Test
+func dashboardPreferencesDoNotCreateValidationErrors() {
+    var config = AppConfiguration()
+    config.dashboardDeviceVisibility = .usbc
+    config.dashboardTheme = .dark
+    config.runtimeLogPanelVisible = false
+    config.runtimeLogCaptureEnabled = false
+    config.dashboardBeepMasterEnabled = false
+    config.pcBeepSoundPreset = .funk
+
+    let result = AppConfigurationValidator.validate(config)
+
+    #expect(result.hasErrors == false)
+}

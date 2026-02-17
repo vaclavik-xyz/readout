@@ -79,6 +79,20 @@ struct SettingsView: View {
                     Toggle("Enable Mac beeper for SHORT", isOn: $configuration.beepOnShortPC)
                     Toggle("Enable Mac beeper for DC voltage alarms", isOn: $configuration.beepOnAlarm)
 
+                    Picker("Mac alert sound", selection: $configuration.pcBeepSoundPreset) {
+                        ForEach(AppConfiguration.MacAlertSoundPreset.allCases, id: \.self) { preset in
+                            Text(soundPresetTitle(preset)).tag(preset)
+                        }
+                    }
+
+                    HStack {
+                        Text("Mac alert volume")
+                        Slider(value: $configuration.pcBeepVolume, in: 0...1)
+                        Text(configuration.pcBeepVolume, format: .number.precision(.fractionLength(2)))
+                            .frame(width: 44, alignment: .trailing)
+                            .foregroundStyle(.secondary)
+                    }
+
                     Toggle("High DC voltage alarm", isOn: $configuration.dcvHighAlarmEnabled)
                     if configuration.dcvHighAlarmEnabled {
                         HStack {
@@ -110,11 +124,28 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
+                    Toggle("Capture runtime INFO logs", isOn: $configuration.runtimeLogCaptureEnabled)
+                    Toggle("Show runtime log panel by default", isOn: $configuration.runtimeLogPanelVisible)
+
                     Stepper(value: $configuration.outputQueueCapacity, in: 8...2048, step: 8) {
                         Text("Output queue capacity: \(configuration.outputQueueCapacity)")
                     }
                     Stepper(value: $configuration.outputQueueMaxRetryAttempts, in: 0...10) {
                         Text("Output retries: \(configuration.outputQueueMaxRetryAttempts)")
+                    }
+                }
+
+                Section("Appearance") {
+                    Picker("Theme", selection: $configuration.dashboardTheme) {
+                        ForEach(AppConfiguration.DashboardTheme.allCases, id: \.self) { theme in
+                            Text(themeTitle(theme)).tag(theme)
+                        }
+                    }
+
+                    Picker("Default dashboard layout", selection: $configuration.dashboardDeviceVisibility) {
+                        ForEach(AppConfiguration.DashboardDeviceVisibility.allCases, id: \.self) { visibility in
+                            Text(layoutTitle(visibility)).tag(visibility)
+                        }
                     }
                 }
 
@@ -313,5 +344,40 @@ struct SettingsView: View {
             binding.wrappedValue = selectedURL.path
         }
         #endif
+    }
+
+    private func soundPresetTitle(_ preset: AppConfiguration.MacAlertSoundPreset) -> String {
+        switch preset {
+        case .system:
+            return "System Beep"
+        case .glass:
+            return "Glass"
+        case .sosumi:
+            return "Sosumi"
+        case .funk:
+            return "Funk"
+        }
+    }
+
+    private func themeTitle(_ theme: AppConfiguration.DashboardTheme) -> String {
+        switch theme {
+        case .system:
+            return "System"
+        case .light:
+            return "Light"
+        case .dark:
+            return "Dark"
+        }
+    }
+
+    private func layoutTitle(_ visibility: AppConfiguration.DashboardDeviceVisibility) -> String {
+        switch visibility {
+        case .both:
+            return "Both devices"
+        case .multimeter:
+            return "Multimeter only"
+        case .usbc:
+            return "USB-C only"
+        }
     }
 }

@@ -33,6 +33,12 @@ func saveAndLoadRoundTrip() async throws {
     config.shortThreshold = 1.2
     config.multimeterCsvLoggingEnabled = true
     config.multimeterCsvLogFilePath = "/tmp/mm.csv"
+    config.dashboardDeviceVisibility = .usbc
+    config.dashboardTheme = .dark
+    config.runtimeLogPanelVisible = false
+    config.runtimeLogCaptureEnabled = false
+    config.dashboardBeepMasterEnabled = false
+    config.pcBeepSoundPreset = .sosumi
 
     try await store.save(config)
     #expect(await store.hasPersistedConfiguration() == true)
@@ -78,4 +84,18 @@ func numericValuesAreClampedOnLoad() throws {
     #expect(migrated.outputQueueMaxRetryAttempts == 10)
     #expect(migrated.shortThreshold == 0.1)
     #expect(migrated.pcBeepVolume == 1.0)
+}
+
+@Test
+func unknownDashboardEnumValuesFallbackToDefaults() throws {
+    let raw: [String: Any] = [
+        "dashboard_device_visibility": "unknown-mode",
+        "dashboard_theme": "alien",
+        "pc_beep_sound_preset": "custom"
+    ]
+
+    let migrated = AppConfiguration.fromDictionary(raw)
+    #expect(migrated.dashboardDeviceVisibility == .both)
+    #expect(migrated.dashboardTheme == .system)
+    #expect(migrated.pcBeepSoundPreset == .system)
 }
