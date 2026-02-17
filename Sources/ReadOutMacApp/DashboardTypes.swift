@@ -21,3 +21,16 @@ enum RuntimeEvent: Sendable {
     case usbcMeasurement(DeviceMeasurement)
     case runtimeError(String)
 }
+
+enum RuntimeLogLevel: String, Sendable {
+    case info = "INFO"
+    case warning = "WARN"
+    case error = "ERROR"
+}
+
+struct RuntimeLogEntry: Identifiable, Sendable {
+    let id = UUID()
+    let timestamp: Date
+    let level: RuntimeLogLevel
+    let message: String
+}

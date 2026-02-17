@@ -25,6 +25,7 @@ final class DashboardViewModel: ObservableObject {
     @Published var editableConfiguration: AppConfiguration = .init()
     @Published var availablePorts: [String] = []
     @Published var statusMessage: String = "Ready"
+    @Published var runtimeLogs: [RuntimeLogEntry] = []
     @Published var isSettingsPresented: Bool = false
     @Published var isRuntimeActive: Bool = false
 
@@ -41,7 +42,7 @@ final class DashboardViewModel: ObservableObject {
     init() {
         let configURL = configurationService.resolveConfigURL()
         configurationStore = ConfigurationStore(configFileURL: configURL)
-        statusMessage = "Config: \(configURL.path)"
+        setStatusMessage("Config: \(configURL.path)")
 
         Task {
             await bootstrap()
@@ -53,9 +54,9 @@ final class DashboardViewModel: ObservableObject {
             await runtime.start(with: configuration)
             await MainActor.run {
                 isRuntimeActive = true
-                statusMessage = configuration.useSimulator
+                setStatusMessage(configuration.useSimulator
                     ? "Connecting simulator devices..."
-                    : "Connecting devices..."
+                    : "Connecting devices...")
             }
         }
     }
@@ -65,7 +66,7 @@ final class DashboardViewModel: ObservableObject {
             await runtime.stop()
             await MainActor.run {
                 isRuntimeActive = false
-                statusMessage = "Disconnected"
+                setStatusMessage("Disconnected")
                 multimeterAlert = "OK"
                 multimeterAlertState = .none
                 pcBeepController.setBeeping(false)
@@ -93,13 +94,18 @@ final class DashboardViewModel: ObservableObject {
     func clearCharts() {
         multimeterSamples.removeAll(keepingCapacity: true)
         usbcSamples.removeAll(keepingCapacity: true)
-        statusMessage = "Charts cleared"
+        setStatusMessage("Charts cleared")
     }
 
     func resetVisualState() {
         multimeterAlert = "OK"
         multimeterAlertState = .none
-        statusMessage = "Visual state reset"
+        setStatusMessage("Visual state reset")
+    }
+
+    func clearRuntimeLogs() {
+        runtimeLogs.removeAll(keepingCapacity: true)
+        setStatusMessage("Runtime logs cleared")
     }
 
     func saveSettings() {
@@ -107,9 +113,9 @@ final class DashboardViewModel: ObservableObject {
         let validation = AppConfigurationValidator.validate(newConfig)
         if validation.hasErrors {
             if let firstError = validation.issues.first(where: { $0.severity == .error }) {
-                statusMessage = "Cannot save settings: \(firstError.message)"
+                setStatusMessage("Cannot save settings: \(firstError.message)", level: .error)
             } else {
-                statusMessage = "Cannot save settings due to invalid configuration."
+                setStatusMessage("Cannot save settings due to invalid configuration.", level: .error)
             }
             return
         }
@@ -121,7 +127,7 @@ final class DashboardViewModel: ObservableObject {
             do {
                 try await configurationStore.save(newConfig)
                 await MainActor.run {
-                    statusMessage = "Settings saved"
+                    setStatusMessage("Settings saved")
                 }
 
                 if isRuntimeActive {
@@ -129,7 +135,7 @@ final class DashboardViewModel: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    statusMessage = "Failed to save settings: \(error.localizedDescription)"
+                    setStatusMessage("Failed to save settings: \(error.localizedDescription)", level: .error)
                 }
             }
         }
@@ -144,9 +150,9 @@ final class DashboardViewModel: ObservableObject {
 
             configuration = normalized
             editableConfiguration = normalized
-            statusMessage = "Configuration loaded"
+            setStatusMessage("Configuration loaded")
         } catch {
-            statusMessage = "Failed to load config: \(error.localizedDescription)"
+            setStatusMessage("Failed to load config: \(error.localizedDescription)", level: .error)
         }
     }
 
@@ -158,17 +164,19 @@ final class DashboardViewModel: ObservableObject {
                 pcBeepController.setBeeping(false)
             }
             if let message {
-                statusMessage = message
+                let level: RuntimeLogLevel = state == .error ? .error : .info
+                setStatusMessage(message, level: level)
             }
 
         case .usbcStatus(let state, let message):
             usbcStatus = state
             if let message {
-                statusMessage = message
+                let level: RuntimeLogLevel = state == .error ? .error : .info
+                setStatusMessage(message, level: level)
             }
 
         case .runtimeError(let message):
-            statusMessage = message
+            setStatusMessage(message, level: .error)
 
         case .multimeterMeasurement(let measurement):
             handleMultimeterMeasurement(measurement)
@@ -190,7 +198,7 @@ final class DashboardViewModel: ObservableObject {
         multimeterAlertState = alert
 
         if let alertMessage = DashboardAlertService.statusMessage(for: alert) {
-            statusMessage = alertMessage
+            setStatusMessage(alertMessage, level: .warning)
         }
 
         pcBeepController.setBeeping(
@@ -243,6 +251,29 @@ final class DashboardViewModel: ObservableObject {
 
         if usbcSamples.count > maxSamples {
             usbcSamples.removeFirst(usbcSamples.count - maxSamples)
+        }
+    }
+
+    private func setStatusMessage(_ message: String, level: RuntimeLogLevel = .info) {
+        statusMessage = message
+        appendRuntimeLog(message, level: level)
+    }
+
+    private func appendRuntimeLog(_ message: String, level: RuntimeLogLevel) {
+        if let last = runtimeLogs.last, last.message == message, last.level == level {
+            return
+        }
+
+        runtimeLogs.append(
+            RuntimeLogEntry(
+                timestamp: Date(),
+                level: level,
+                message: message
+            )
+        )
+
+        if runtimeLogs.count > 200 {
+            runtimeLogs.removeFirst(runtimeLogs.count - 200)
         }
     }
 }

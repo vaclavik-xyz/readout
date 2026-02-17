@@ -34,3 +34,21 @@ func resetVisualStateClearsAlertPresentation() {
     #expect(viewModel.multimeterAlertState == .none)
     #expect(viewModel.statusMessage == "Visual state reset")
 }
+
+@MainActor
+@Test
+func clearRuntimeLogsDropsPreviousEntries() {
+    let viewModel = DashboardViewModel()
+    viewModel.runtimeLogs = [
+        RuntimeLogEntry(
+            timestamp: Date(timeIntervalSince1970: 0),
+            level: .error,
+            message: "stale-log-entry"
+        )
+    ]
+
+    viewModel.clearRuntimeLogs()
+
+    #expect(viewModel.statusMessage == "Runtime logs cleared")
+    #expect(viewModel.runtimeLogs.contains(where: { $0.message == "stale-log-entry" }) == false)
+}

@@ -22,6 +22,7 @@ struct ContentView: View {
                 statusStrip
                 cards
                 charts
+                runtimeLogPanel
             }
             .padding(20)
         }
@@ -60,6 +61,9 @@ struct ContentView: View {
                     .buttonStyle(.bordered)
 
                 Button("Reset Alert") { viewModel.resetVisualState() }
+                    .buttonStyle(.bordered)
+
+                Button("Clear Logs") { viewModel.clearRuntimeLogs() }
                     .buttonStyle(.bordered)
 
                 if viewModel.isRuntimeActive {
@@ -150,6 +154,55 @@ struct ContentView: View {
                 lowThreshold: nil
             )
         }
+    }
+
+    private var runtimeLogPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Runtime Log")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.9))
+                Spacer()
+                Text("\(viewModel.runtimeLogs.count) entries")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    ForEach(viewModel.runtimeLogs.suffix(80)) { entry in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(entry.timestamp, format: .dateTime.hour().minute().second())
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundStyle(.white.opacity(0.6))
+
+                            Text(entry.level.rawValue)
+                                .font(.system(size: 10, weight: .black, design: .rounded))
+                                .foregroundStyle(.black.opacity(0.85))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(logLevelColor(entry.level), in: Capsule())
+
+                            Text(entry.message)
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.82))
+
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 140, maxHeight: 180, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(.white.opacity(0.12), lineWidth: 1)
+                )
+        )
     }
 
     private func deviceCard(
@@ -308,5 +361,16 @@ struct ContentView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(alertAccentColor(alertState), in: Capsule())
+    }
+
+    private func logLevelColor(_ level: RuntimeLogLevel) -> Color {
+        switch level {
+        case .info:
+            return .mint
+        case .warning:
+            return .yellow
+        case .error:
+            return .red
+        }
     }
 }
