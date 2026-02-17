@@ -6,6 +6,7 @@ import AppKit
 @main
 struct ReadOutMacApp: App {
     @StateObject private var viewModel = DashboardViewModel()
+    @StateObject private var popoutManager = DevicePopoutManager()
 
     init() {
         #if canImport(AppKit)
@@ -18,7 +19,7 @@ struct ReadOutMacApp: App {
 
     var body: some Scene {
         WindowGroup("readOut") {
-            ContentView(viewModel: viewModel)
+            ContentView(viewModel: viewModel, popoutManager: popoutManager)
                 .frame(minWidth: 1000, minHeight: 700)
         }
         .windowResizability(.contentSize)

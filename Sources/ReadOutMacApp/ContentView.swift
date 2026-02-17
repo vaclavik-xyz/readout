@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @ObservedObject var viewModel: DashboardViewModel
+    let popoutManager: DevicePopoutManager
     @State private var selectedMultimeterTimestamp: Date?
     @State private var selectedUsbCTimestamp: Date?
 
@@ -132,6 +133,19 @@ struct ContentView: View {
                         .buttonStyle(.bordered)
 
                     Menu("More") {
+                        Button("Pop-out Multimeter") {
+                            popoutManager.show(.multimeter, viewModel: viewModel)
+                        }
+                        Button("Pop-out USB-C") {
+                            popoutManager.show(.usbc, viewModel: viewModel)
+                        }
+                        Button("Close Multimeter Pop-out") {
+                            popoutManager.close(.multimeter)
+                        }
+                        Button("Close USB-C Pop-out") {
+                            popoutManager.close(.usbc)
+                        }
+                        Divider()
                         Button("Refresh Ports") { viewModel.refreshPorts() }
                         Button("Restart Runtime") { viewModel.restartRuntime() }
                             .disabled(viewModel.isRecoveryInProgress)
