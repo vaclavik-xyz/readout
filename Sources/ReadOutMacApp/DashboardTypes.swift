@@ -256,6 +256,19 @@ enum MacAlertSoundPreset: String, Sendable, CaseIterable, Identifiable {
     }
 }
 
+enum RuntimeHealthSeverity: String, Sendable, Equatable {
+    case good
+    case warning
+    case critical
+}
+
+struct RuntimeHealthBadge: Identifiable, Sendable, Equatable {
+    let id: String
+    let title: String
+    let value: String
+    let severity: RuntimeHealthSeverity
+}
+
 enum DevicePopoutDisplayMode: String, Sendable, CaseIterable, Identifiable {
     case mini
     case compact

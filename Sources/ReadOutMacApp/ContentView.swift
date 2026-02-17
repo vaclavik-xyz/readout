@@ -32,6 +32,7 @@ struct ContentView: View {
                 VStack(spacing: 16) {
                 header
                 statusStrip
+                runtimeHealthStrip
                 cards
                 alarmHistoryStrip
                 charts
@@ -229,6 +230,39 @@ struct ContentView: View {
                         .stroke(.white.opacity(0.08), lineWidth: 1)
                 )
         )
+    }
+
+    private var runtimeHealthStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(viewModel.runtimeHealthBadges) { badge in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(runtimeHealthColor(badge.severity))
+                                .frame(width: 8, height: 8)
+                            Text(badge.title)
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundStyle(palette.secondaryText)
+                        }
+                        Text(badge.value)
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundStyle(palette.tertiaryText)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .stroke(runtimeHealthColor(badge.severity).opacity(0.35), lineWidth: 1)
+                            )
+                    )
+                }
+            }
+        }
     }
 
     private var cards: some View {
@@ -741,6 +775,17 @@ struct ContentView: View {
         case .warning:
             return .yellow
         case .error:
+            return .red
+        }
+    }
+
+    private func runtimeHealthColor(_ severity: RuntimeHealthSeverity) -> Color {
+        switch severity {
+        case .good:
+            return .mint
+        case .warning:
+            return .yellow
+        case .critical:
             return .red
         }
     }

@@ -288,3 +288,41 @@ func uiRefreshRuntimeSummaryReflectsAdaptiveMode() async {
     #expect(viewModel.uiRefreshRuntimeSummary.contains("high-load"))
     #expect(viewModel.uiRefreshRuntimeSummary.contains("target:6Hz"))
 }
+
+@MainActor
+@Test
+func runtimeHealthBadgesExposeCoreCategories() {
+    let viewModel = DashboardViewModel()
+    let ids = Set(viewModel.runtimeHealthBadges.map(\.id))
+
+    #expect(ids.contains("ui_refresh"))
+    #expect(ids.contains("output_queues"))
+    #expect(ids.contains("runtime_faults"))
+    #expect(ids.contains("log_capture"))
+}
+
+@MainActor
+@Test
+func runtimeHealthBadgeMarksOutputQueueDropsAsCritical() {
+    let viewModel = DashboardViewModel()
+
+    viewModel.debugInjectRuntimeLog(
+        level: .warning,
+        message: "Output queue multimeter-csv: dropped 3 writes (capacity 256, queued 255)."
+    )
+
+    let queueBadge = viewModel.runtimeHealthBadges.first(where: { $0.id == "output_queues" })
+    #expect(queueBadge?.severity == .critical)
+    #expect(queueBadge?.value.contains("drop 3") == true)
+}
+
+@MainActor
+@Test
+func runtimeHealthBadgeShowsUiWarningDuringPause() {
+    let viewModel = DashboardViewModel()
+
+    viewModel.toggleRenderPause()
+
+    let uiBadge = viewModel.runtimeHealthBadges.first(where: { $0.id == "ui_refresh" })
+    #expect(uiBadge?.severity == .warning)
+}
