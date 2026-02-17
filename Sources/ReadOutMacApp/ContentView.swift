@@ -77,6 +77,9 @@ struct ContentView: View {
                 Button("Export Logs") { exportLogs() }
                     .buttonStyle(.bordered)
 
+                Button("Export Diagnostics") { exportDiagnostics() }
+                    .buttonStyle(.bordered)
+
                 Button("Restart Runtime") { viewModel.restartRuntime() }
                     .buttonStyle(.borderedProminent)
                     .tint(.orange)
@@ -348,6 +351,20 @@ struct ContentView: View {
 
         if panel.runModal() == .OK, let url = panel.url {
             viewModel.exportRuntimeLogs(to: url)
+        }
+        #endif
+    }
+
+    private func exportDiagnostics() {
+        #if canImport(AppKit)
+        let panel = NSSavePanel()
+        panel.title = "Export Diagnostics Bundle"
+        panel.nameFieldStringValue = "readout-diagnostics.zip"
+        panel.allowedContentTypes = [.zip]
+        panel.canCreateDirectories = true
+
+        if panel.runModal() == .OK, let url = panel.url {
+            viewModel.exportDiagnosticsBundle(to: url)
         }
         #endif
     }

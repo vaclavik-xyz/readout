@@ -33,8 +33,15 @@ final class DashboardViewModel: ObservableObject {
     private let configurationService = DashboardConfigurationService()
     private let configurationStore: ConfigurationStore
     private let runtimeLogStore: RuntimeLogStore
+    private let diagnosticsBundleService = DiagnosticsBundleService()
     private let pcBeepController = PcBeepController()
     private var recoveryTask: Task<Void, Never>?
+    private var connectionTimeline: [ConnectionTimelineEntry] = []
+    private var healthSnapshots: [RuntimeHealthSnapshot] = []
+    private var reconnectCount = 0
+    private var runtimeErrorCount = 0
+    private var parseErrorCount = 0
+    private var outputDropWarningCount = 0
 
     private lazy var runtime = ReadOutRuntime { [weak self] event in
         Task { @MainActor [weak self] in
@@ -162,6 +169,23 @@ final class DashboardViewModel: ObservableObject {
         }
     }
 
+    func exportDiagnosticsBundle(to destinationURL: URL) {
+        let input = makeDiagnosticsBundleInput()
+
+        Task { [diagnosticsBundleService] in
+            do {
+                try diagnosticsBundleService.exportBundle(to: destinationURL, input: input)
+                await MainActor.run {
+                    setStatusMessage("Diagnostics bundle exported to \(destinationURL.path)")
+                }
+            } catch {
+                await MainActor.run {
+                    setStatusMessage("Failed to export diagnostics bundle: \(error.localizedDescription)", level: .error)
+                }
+            }
+        }
+    }
+
     func saveSettings() {
         let newConfig = configurationService.normalized(editableConfiguration, availablePorts: availablePorts)
         let validation = AppConfigurationValidator.validate(newConfig)
@@ -206,8 +230,10 @@ final class DashboardViewModel: ObservableObject {
             configuration = normalized
             editableConfiguration = normalized
             setStatusMessage("Configuration loaded")
+            appendHealthSnapshot(reason: "bootstrap_loaded")
         } catch {
             setStatusMessage("Failed to load config: \(error.localizedDescription)", level: .error)
+            appendHealthSnapshot(reason: "bootstrap_load_failed")
         }
     }
 
@@ -215,6 +241,7 @@ final class DashboardViewModel: ObservableObject {
         switch event {
         case .multimeterStatus(let state, let message):
             multimeterStatus = state
+            recordConnectionTimeline(device: "multimeter", state: state, message: message)
             if state == .disconnected || state == .error {
                 pcBeepController.setBeeping(false)
             }
@@ -225,19 +252,27 @@ final class DashboardViewModel: ObservableObject {
 
         case .usbcStatus(let state, let message):
             usbcStatus = state
+            recordConnectionTimeline(device: "usbc", state: state, message: message)
             if let message {
                 let level: RuntimeLogLevel = state == .error ? .error : .info
                 setStatusMessage(message, level: level)
             }
 
         case .runtimeError(let message):
+            runtimeErrorCount += 1
+            if message.lowercased().contains("parse") {
+                parseErrorCount += 1
+            }
             setStatusMessage(message, level: .error)
+            appendHealthSnapshot(reason: "runtime_error")
 
         case .runtimeLog(let level, let message):
+            recordRuntimeLogHealth(level: level, message: message)
             if level == .warning || level == .error {
                 statusMessage = message
             }
             appendRuntimeLog(message, level: level, persist: true)
+            appendHealthSnapshot(reason: "runtime_log")
 
         case .multimeterMeasurement(let measurement):
             handleMultimeterMeasurement(measurement)
@@ -427,5 +462,70 @@ final class DashboardViewModel: ObservableObject {
             "Multimeter Port: \(multimeterPort)",
             "USB-C Port: \(usbcPort)"
         ]
+    }
+
+    private func makeDiagnosticsBundleInput() -> DiagnosticsBundleInput {
+        DiagnosticsBundleInput(
+            exportedAt: Date(),
+            configuration: configuration,
+            runtimeLogs: Array(runtimeLogs.suffix(500)),
+            healthSnapshots: Array(healthSnapshots.suffix(500)),
+            connectionTimeline: Array(connectionTimeline.suffix(500)),
+            multimeterStatus: multimeterStatus,
+            usbcStatus: usbcStatus,
+            isRuntimeActive: isRuntimeActive,
+            statusMessage: statusMessage
+        )
+    }
+
+    private func recordConnectionTimeline(device: String, state: DeviceUIState, message: String?) {
+        if let message, message.contains("Retrying") {
+            reconnectCount += 1
+        }
+
+        connectionTimeline.append(
+            ConnectionTimelineEntry(
+                timestamp: Date(),
+                device: device,
+                state: state,
+                message: message
+            )
+        )
+        if connectionTimeline.count > 500 {
+            connectionTimeline.removeFirst(connectionTimeline.count - 500)
+        }
+
+        appendHealthSnapshot(reason: "\(device)_status")
+    }
+
+    private func recordRuntimeLogHealth(level: RuntimeLogLevel, message: String) {
+        let lowered = message.lowercased()
+        if lowered.contains("output queue"), lowered.contains("dropped"), level == .warning {
+            outputDropWarningCount += 1
+        }
+        if lowered.contains("parse"), (level == .warning || level == .error) {
+            parseErrorCount += 1
+        }
+    }
+
+    private func appendHealthSnapshot(reason: String) {
+        healthSnapshots.append(
+            RuntimeHealthSnapshot(
+                timestamp: Date(),
+                reason: reason,
+                isRuntimeActive: isRuntimeActive,
+                multimeterStatus: multimeterStatus,
+                usbcStatus: usbcStatus,
+                reconnectCount: reconnectCount,
+                runtimeErrorCount: runtimeErrorCount,
+                parseErrorCount: parseErrorCount,
+                outputDropWarningCount: outputDropWarningCount,
+                runtimeLogCount: runtimeLogs.count,
+                statusMessage: statusMessage
+            )
+        )
+        if healthSnapshots.count > 500 {
+            healthSnapshots.removeFirst(healthSnapshots.count - 500)
+        }
     }
 }

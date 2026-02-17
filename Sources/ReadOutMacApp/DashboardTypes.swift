@@ -7,7 +7,7 @@ struct ChartSample: Identifiable {
     let value: Double
 }
 
-enum DeviceUIState: String, Sendable {
+enum DeviceUIState: String, Sendable, Codable {
     case disconnected
     case connecting
     case connected
@@ -23,7 +23,7 @@ enum RuntimeEvent: Sendable {
     case runtimeLog(RuntimeLogLevel, String)
 }
 
-enum RuntimeLogLevel: String, Sendable {
+enum RuntimeLogLevel: String, Sendable, Codable {
     case info = "INFO"
     case warning = "WARN"
     case error = "ERROR"
@@ -34,4 +34,69 @@ struct RuntimeLogEntry: Identifiable, Sendable {
     let timestamp: Date
     let level: RuntimeLogLevel
     let message: String
+}
+
+struct ConnectionTimelineEntry: Identifiable, Sendable, Codable {
+    let id: UUID
+    let timestamp: Date
+    let device: String
+    let state: DeviceUIState
+    let message: String?
+
+    init(
+        id: UUID = UUID(),
+        timestamp: Date,
+        device: String,
+        state: DeviceUIState,
+        message: String?
+    ) {
+        self.id = id
+        self.timestamp = timestamp
+        self.device = device
+        self.state = state
+        self.message = message
+    }
+}
+
+struct RuntimeHealthSnapshot: Identifiable, Sendable, Codable {
+    let id: UUID
+    let timestamp: Date
+    let reason: String
+    let isRuntimeActive: Bool
+    let multimeterStatus: DeviceUIState
+    let usbcStatus: DeviceUIState
+    let reconnectCount: Int
+    let runtimeErrorCount: Int
+    let parseErrorCount: Int
+    let outputDropWarningCount: Int
+    let runtimeLogCount: Int
+    let statusMessage: String
+
+    init(
+        id: UUID = UUID(),
+        timestamp: Date,
+        reason: String,
+        isRuntimeActive: Bool,
+        multimeterStatus: DeviceUIState,
+        usbcStatus: DeviceUIState,
+        reconnectCount: Int,
+        runtimeErrorCount: Int,
+        parseErrorCount: Int,
+        outputDropWarningCount: Int,
+        runtimeLogCount: Int,
+        statusMessage: String
+    ) {
+        self.id = id
+        self.timestamp = timestamp
+        self.reason = reason
+        self.isRuntimeActive = isRuntimeActive
+        self.multimeterStatus = multimeterStatus
+        self.usbcStatus = usbcStatus
+        self.reconnectCount = reconnectCount
+        self.runtimeErrorCount = runtimeErrorCount
+        self.parseErrorCount = parseErrorCount
+        self.outputDropWarningCount = outputDropWarningCount
+        self.runtimeLogCount = runtimeLogCount
+        self.statusMessage = statusMessage
+    }
 }
