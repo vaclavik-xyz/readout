@@ -74,6 +74,9 @@ final class DashboardViewModel: ObservableObject {
     @Published var isSettingsPresented: Bool = false
     @Published var isRuntimeActive: Bool = false
     @Published var isRecoveryInProgress: Bool = false
+    @Published private(set) var isSessionCaptureActive: Bool = false
+    @Published private(set) var sessionCaptureEventCount: Int = 0
+    @Published private(set) var isSessionReplayActive: Bool = false
     @Published var deviceVisibility: DashboardDeviceVisibility = .both
     @Published var theme: DashboardTheme = .system
     @Published var isRuntimeLogPanelVisible: Bool = true
@@ -121,6 +124,9 @@ final class DashboardViewModel: ObservableObject {
     private var pendingMultimeterSnapshot: MultimeterPresentationSnapshot?
     private var pendingUsbCSnapshot: UsbCPresentationSnapshot?
     private var pendingRuntimeLogs: [RuntimeLogEntry] = []
+    private var sessionCaptureRecords: [RuntimeSessionCaptureRecord] = []
+    private var sessionCaptureStart: Date?
+    private var sessionReplayTask: Task<Void, Never>?
     private let uiRefreshNormalCadenceHz = 10
     private let uiRefreshHighLoadCadenceHz = 6
     private let uiRefreshEnterHighLoadScore = 3
@@ -190,6 +196,7 @@ final class DashboardViewModel: ObservableObject {
 
     deinit {
         uiRefreshTask?.cancel()
+        sessionReplayTask?.cancel()
         pcBeepController.setBeeping(false)
     }
 
@@ -728,6 +735,105 @@ final class DashboardViewModel: ObservableObject {
         }
     }
 
+    func startRuntimeSessionCapture() {
+        sessionCaptureStart = Date()
+        sessionCaptureRecords.removeAll(keepingCapacity: true)
+        sessionCaptureEventCount = 0
+        isSessionCaptureActive = true
+        setStatusMessage("Session capture started")
+    }
+
+    func stopRuntimeSessionCapture() {
+        guard isSessionCaptureActive else {
+            return
+        }
+        isSessionCaptureActive = false
+        setStatusMessage("Session capture stopped (\(sessionCaptureEventCount) events)")
+    }
+
+    func exportRuntimeSessionCapture(to destinationURL: URL) {
+        guard !sessionCaptureRecords.isEmpty else {
+            setStatusMessage("No captured session events to export.", level: .warning)
+            return
+        }
+
+        let createdAt = sessionCaptureStart ?? Date()
+        let records = sessionCaptureRecords
+        Task {
+            do {
+                try RuntimeSessionCaptureService.writeCapture(
+                    createdAt: createdAt,
+                    records: records,
+                    to: destinationURL
+                )
+                await MainActor.run {
+                    setStatusMessage("Session capture exported to \(destinationURL.path)")
+                }
+            } catch {
+                await MainActor.run {
+                    setStatusMessage("Failed to export session capture: \(error.localizedDescription)", level: .error)
+                }
+            }
+        }
+    }
+
+    func replayRuntimeSession(from sourceURL: URL) {
+        sessionReplayTask?.cancel()
+        sessionReplayTask = Task { [weak self] in
+            guard let self else {
+                return
+            }
+
+            do {
+                let capture = try RuntimeSessionCaptureService.readCapture(from: sourceURL)
+                await MainActor.run {
+                    self.isSessionReplayActive = true
+                    self.setStatusMessage("Session replay started (\(capture.events.count) events)")
+                }
+
+                var previousOffset = 0
+                for record in capture.events {
+                    if Task.isCancelled {
+                        return
+                    }
+                    let waitMilliseconds = max(0, record.offsetMilliseconds - previousOffset)
+                    previousOffset = record.offsetMilliseconds
+                    if waitMilliseconds > 0 {
+                        try? await Task.sleep(nanoseconds: UInt64(waitMilliseconds) * 1_000_000)
+                    }
+                    guard let event = RuntimeSessionCaptureService.runtimeEvent(from: record) else {
+                        continue
+                    }
+                    await MainActor.run {
+                        self.handleRuntimeEvent(event)
+                    }
+                }
+
+                await MainActor.run {
+                    self.isSessionReplayActive = false
+                    self.sessionReplayTask = nil
+                    self.setStatusMessage("Session replay completed")
+                }
+            } catch {
+                await MainActor.run {
+                    self.isSessionReplayActive = false
+                    self.sessionReplayTask = nil
+                    self.setStatusMessage("Failed to replay session: \(error.localizedDescription)", level: .error)
+                }
+            }
+        }
+    }
+
+    func stopRuntimeSessionReplay() {
+        guard isSessionReplayActive else {
+            return
+        }
+        sessionReplayTask?.cancel()
+        sessionReplayTask = nil
+        isSessionReplayActive = false
+        setStatusMessage("Session replay stopped")
+    }
+
     func saveSettings() {
         let newConfig = configurationService.normalized(editableConfiguration, availablePorts: availablePorts)
         let validation = AppConfigurationValidator.validate(newConfig)
@@ -820,6 +926,8 @@ final class DashboardViewModel: ObservableObject {
     }
 
     private func handleRuntimeEvent(_ event: RuntimeEvent) {
+        captureRuntimeSessionEvent(event, at: Date())
+
         switch event {
         case .multimeterStatus(let state, let message):
             multimeterStatus = state
@@ -1124,6 +1232,27 @@ final class DashboardViewModel: ObservableObject {
             return nil
         }
         return String(trimmed.prefix(48))
+    }
+
+    private func captureRuntimeSessionEvent(_ event: RuntimeEvent, at now: Date) {
+        guard isSessionCaptureActive else {
+            return
+        }
+        let reference = sessionCaptureStart ?? now
+        if sessionCaptureStart == nil {
+            sessionCaptureStart = now
+        }
+        let offsetMs = Int((now.timeIntervalSince(reference) * 1_000).rounded())
+        sessionCaptureRecords.append(
+            RuntimeSessionCaptureService.makeRecord(
+                event: event,
+                offsetMilliseconds: max(0, offsetMs)
+            )
+        )
+        if sessionCaptureRecords.count > 20_000 {
+            sessionCaptureRecords.removeFirst(sessionCaptureRecords.count - 20_000)
+        }
+        sessionCaptureEventCount = sessionCaptureRecords.count
     }
 
     private func reconcileAlarmAcknowledge(
@@ -1881,8 +2010,16 @@ final class DashboardViewModel: ObservableObject {
         handleMultimeterMeasurement(measurement)
     }
 
+    func debugInjectRuntimeEvent(_ event: RuntimeEvent) {
+        handleRuntimeEvent(event)
+    }
+
     func debugInjectRuntimeLog(level: RuntimeLogLevel, message: String) {
         handleRuntimeEvent(.runtimeLog(level, message))
+    }
+
+    func debugSessionCaptureSnapshot() -> (active: Bool, count: Int) {
+        (isSessionCaptureActive, sessionCaptureEventCount)
     }
 
     func debugRefreshTickCounters() -> (applied: Int, skipped: Int) {

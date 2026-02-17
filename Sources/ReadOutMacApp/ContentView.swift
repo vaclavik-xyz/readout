@@ -268,6 +268,23 @@ struct ContentView: View {
                         Divider()
                         Button("Export Logs") { exportLogs() }
                         Button("Export Diagnostics") { exportDiagnostics() }
+                        Divider()
+                        Button(viewModel.isSessionCaptureActive ? "Stop Session Capture" : "Start Session Capture") {
+                            if viewModel.isSessionCaptureActive {
+                                viewModel.stopRuntimeSessionCapture()
+                            } else {
+                                viewModel.startRuntimeSessionCapture()
+                            }
+                        }
+                        Button("Export Session Capture") { exportSessionCapture() }
+                            .disabled(viewModel.sessionCaptureEventCount == 0)
+                        Button(viewModel.isSessionReplayActive ? "Stop Session Replay" : "Replay Session Capture") {
+                            if viewModel.isSessionReplayActive {
+                                viewModel.stopRuntimeSessionReplay()
+                            } else {
+                                replaySessionCapture()
+                            }
+                        }
                     }
                     .menuStyle(.borderlessButton)
                 }
@@ -294,6 +311,20 @@ struct ContentView: View {
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(palette.tertiaryText)
                 .lineLimit(1)
+
+            if viewModel.isSessionCaptureActive || viewModel.sessionCaptureEventCount > 0 {
+                Text("Capture: \(viewModel.sessionCaptureEventCount)")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(viewModel.isSessionCaptureActive ? .mint : palette.tertiaryText)
+                    .lineLimit(1)
+            }
+
+            if viewModel.isSessionReplayActive {
+                Text("Replay active")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.orange)
+                    .lineLimit(1)
+            }
 
             if viewModel.alarmControlSummary != "Live" {
                 Text("Alarm: \(viewModel.alarmControlSummary)")
@@ -812,6 +843,34 @@ struct ContentView: View {
 
         if panel.runModal() == .OK, let url = panel.url {
             viewModel.exportDiagnosticsBundle(to: url)
+        }
+        #endif
+    }
+
+    private func exportSessionCapture() {
+        #if canImport(AppKit)
+        let panel = NSSavePanel()
+        panel.title = "Export Session Capture"
+        panel.nameFieldStringValue = "readout-session-capture.json"
+        panel.allowedContentTypes = [.json]
+        panel.canCreateDirectories = true
+
+        if panel.runModal() == .OK, let url = panel.url {
+            viewModel.exportRuntimeSessionCapture(to: url)
+        }
+        #endif
+    }
+
+    private func replaySessionCapture() {
+        #if canImport(AppKit)
+        let panel = NSOpenPanel()
+        panel.title = "Replay Session Capture"
+        panel.allowedContentTypes = [.json]
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+
+        if panel.runModal() == .OK, let url = panel.url {
+            viewModel.replayRuntimeSession(from: url)
         }
         #endif
     }

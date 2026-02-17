@@ -4,6 +4,12 @@ import Testing
 @testable import ReadOutCore
 @testable import ReadOutPersistence
 
+private func uniqueSessionCaptureURL(_ suffix: String) -> URL {
+    let base = FileManager.default.temporaryDirectory
+    let id = UUID().uuidString
+    return base.appendingPathComponent("readout-session-\(id)-\(suffix)")
+}
+
 @MainActor
 @Test
 func clearChartsRemovesAllSamples() {
@@ -407,4 +413,45 @@ func acknowledgeClearsWhenAlertTransitionsToDifferentState() {
 
     #expect(viewModel.isAlarmAcknowledged == false)
     #expect(viewModel.alarmControlSummary == "Live")
+}
+
+@MainActor
+@Test
+func sessionCaptureCountsIncomingRuntimeEvents() {
+    let viewModel = DashboardViewModel()
+    viewModel.startRuntimeSessionCapture()
+
+    viewModel.debugInjectRuntimeEvent(.multimeterStatus(.connected, "connected"))
+    viewModel.debugInjectRuntimeEvent(.runtimeLog(.warning, "warn"))
+    viewModel.stopRuntimeSessionCapture()
+
+    let capture = viewModel.debugSessionCaptureSnapshot()
+    #expect(capture.active == false)
+    #expect(capture.count >= 2)
+}
+
+@MainActor
+@Test
+func sessionReplayFeedsCapturedEventsIntoDashboardState() async throws {
+    let viewModel = DashboardViewModel()
+    let now = Date(timeIntervalSince1970: 1_800_000_100)
+    let records = [
+        RuntimeSessionCaptureService.makeRecord(
+            event: .multimeterStatus(.connected, "Replay connected"),
+            offsetMilliseconds: 0
+        ),
+        RuntimeSessionCaptureService.makeRecord(
+            event: .runtimeError("Replay injected runtime error"),
+            offsetMilliseconds: 40
+        )
+    ]
+    let captureURL = uniqueSessionCaptureURL("replay.json")
+    try RuntimeSessionCaptureService.writeCapture(createdAt: now, records: records, to: captureURL)
+
+    viewModel.replayRuntimeSession(from: captureURL)
+    try? await Task.sleep(nanoseconds: 300_000_000)
+
+    #expect(viewModel.isSessionReplayActive == false)
+    #expect(viewModel.multimeterStatus == .connected)
+    #expect(viewModel.runtimeLogs.contains(where: { $0.message == "Replay injected runtime error" }))
 }
