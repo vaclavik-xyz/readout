@@ -1,6 +1,10 @@
 import Foundation
 import ReadOutCore
 
+protocol ChartTimedMarker: Identifiable {
+    var timestamp: Date { get }
+}
+
 struct ChartSample: Identifiable, Sendable {
     let id = UUID()
     let timestamp: Date
@@ -101,7 +105,7 @@ struct RuntimeHealthSnapshot: Identifiable, Sendable, Codable {
     }
 }
 
-struct AlarmTimelineMarker: Identifiable, Sendable {
+struct AlarmTimelineMarker: ChartTimedMarker, Sendable {
     let id = UUID()
     let timestamp: Date
     let state: MeasurementAlertState
@@ -114,7 +118,7 @@ enum ConnectionOverlayState: String, Sendable {
     case restored
 }
 
-struct ConnectionOverlayMarker: Identifiable, Sendable {
+struct ConnectionOverlayMarker: ChartTimedMarker, Sendable {
     let id = UUID()
     let timestamp: Date
     let state: ConnectionOverlayState

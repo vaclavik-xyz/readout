@@ -8,6 +8,8 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @ObservedObject var viewModel: DashboardViewModel
+    @State private var selectedMultimeterTimestamp: Date?
+    @State private var selectedUsbCTimestamp: Date?
 
     var body: some View {
         ZStack {
@@ -191,6 +193,7 @@ struct ContentView: View {
                     samples: viewModel.displayedMultimeterSamples,
                     markers: viewModel.displayedAlarmMarkers,
                     reconnectMarkers: viewModel.displayedMultimeterConnectionMarkers,
+                    selectedTimestamp: $selectedMultimeterTimestamp,
                     highThreshold: viewModel.configuration.dcvHighAlarmEnabled
                         ? viewModel.configuration.dcvHighAlarmValue
                         : nil,
@@ -204,6 +207,7 @@ struct ContentView: View {
                     samples: viewModel.displayedUsbCSamples,
                     markers: [],
                     reconnectMarkers: viewModel.displayedUsbCConnectionMarkers,
+                    selectedTimestamp: $selectedUsbCTimestamp,
                     highThreshold: nil,
                     lowThreshold: nil
                 )
@@ -347,6 +351,7 @@ struct ContentView: View {
         samples: [ChartSample],
         markers: [AlarmTimelineMarker],
         reconnectMarkers: [ConnectionOverlayMarker],
+        selectedTimestamp: Binding<Date?>,
         highThreshold: Double?,
         lowThreshold: Double?
     ) -> some View {
@@ -419,6 +424,19 @@ struct ContentView: View {
                 AxisMarks(position: .leading)
             }
             .chartXAxis(.hidden)
+            .chartXSelection(value: selectedTimestamp)
+
+            if let selectedTimestamp = selectedTimestamp.wrappedValue {
+                chartSelectionDetails(
+                    selectedTimestamp: selectedTimestamp,
+                    markers: markers,
+                    reconnectMarkers: reconnectMarkers
+                )
+            } else if !markers.isEmpty || !reconnectMarkers.isEmpty {
+                Text("Hover or drag across the chart for marker details")
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.5))
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, minHeight: 260)
@@ -430,6 +448,85 @@ struct ContentView: View {
                         .stroke(.white.opacity(0.14), lineWidth: 1)
                 )
         )
+    }
+
+    @ViewBuilder
+    private func chartSelectionDetails(
+        selectedTimestamp: Date,
+        markers: [AlarmTimelineMarker],
+        reconnectMarkers: [ConnectionOverlayMarker]
+    ) -> some View {
+        let maxDistance = selectionDistanceSeconds()
+        let nearestAlarm = ChartMarkerSelectionService.nearestAlarmMarker(
+            to: selectedTimestamp,
+            markers: markers,
+            maxDistanceSeconds: maxDistance
+        )
+        let nearestConnection = ChartMarkerSelectionService.nearestConnectionMarker(
+            to: selectedTimestamp,
+            markers: reconnectMarkers,
+            maxDistanceSeconds: maxDistance
+        )
+
+        HStack(spacing: 8) {
+            Text(selectedTimestamp, format: .dateTime.hour().minute().second())
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.6))
+
+            if let nearestAlarm {
+                markerBadge(
+                    title: alarmMarkerLabel(nearestAlarm.state),
+                    detail: nearestAlarm.message,
+                    color: alarmMarkerColor(nearestAlarm.state)
+                )
+            }
+
+            if let nearestConnection {
+                markerBadge(
+                    title: connectionOverlayLabel(nearestConnection.state),
+                    detail: nearestConnection.message,
+                    color: connectionOverlayColor(nearestConnection.state)
+                )
+            }
+
+            if nearestAlarm == nil, nearestConnection == nil {
+                Text("No marker near cursor")
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.5))
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 2)
+    }
+
+    private func markerBadge(title: String, detail: String, color: Color) -> some View {
+        HStack(spacing: 5) {
+            Text(title)
+                .font(.system(size: 9, weight: .black, design: .rounded))
+                .foregroundStyle(.black.opacity(0.85))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(color, in: Capsule())
+
+            Text(detail)
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.7))
+                .lineLimit(1)
+        }
+    }
+
+    private func selectionDistanceSeconds() -> TimeInterval {
+        switch viewModel.selectedChartRange {
+        case .thirtySeconds:
+            return 2.5
+        case .twoMinutes:
+            return 8
+        case .tenMinutes:
+            return 20
+        case .full:
+            return 60
+        }
     }
 
     private func exportLogs() {
