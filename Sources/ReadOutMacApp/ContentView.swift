@@ -1,6 +1,10 @@
 import SwiftUI
 import Charts
 import ReadOutCore
+#if canImport(AppKit)
+import AppKit
+import UniformTypeIdentifiers
+#endif
 
 struct ContentView: View {
     @ObservedObject var viewModel: DashboardViewModel
@@ -64,6 +68,9 @@ struct ContentView: View {
                     .buttonStyle(.bordered)
 
                 Button("Clear Logs") { viewModel.clearRuntimeLogs() }
+                    .buttonStyle(.bordered)
+
+                Button("Export Logs") { exportLogs() }
                     .buttonStyle(.bordered)
 
                 Button("Restart Runtime") { viewModel.restartRuntime() }
@@ -324,6 +331,21 @@ struct ContentView: View {
                         .stroke(.white.opacity(0.14), lineWidth: 1)
                 )
         )
+    }
+
+    private func exportLogs() {
+        #if canImport(AppKit)
+        let panel = NSSavePanel()
+        panel.title = "Export Runtime Logs"
+        panel.nameFieldStringValue = "readout-runtime.log"
+        let logType = UTType(filenameExtension: "log") ?? .plainText
+        panel.allowedContentTypes = [logType, .plainText]
+        panel.canCreateDirectories = true
+
+        if panel.runModal() == .OK, let url = panel.url {
+            viewModel.exportRuntimeLogs(to: url)
+        }
+        #endif
     }
 
     private func statusPill(_ status: DeviceUIState) -> some View {

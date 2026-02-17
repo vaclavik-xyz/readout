@@ -25,6 +25,17 @@ struct DashboardConfigurationService {
         return readOutConfig
     }
 
+    func resolveRuntimeLogDirectoryURL() -> URL {
+        let fm = FileManager.default
+        let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory())
+                .appendingPathComponent("Library/Application Support", isDirectory: true)
+
+        return appSupport
+            .appendingPathComponent("readOut", isDirectory: true)
+            .appendingPathComponent("logs", isDirectory: true)
+    }
+
     func discoverPorts() -> [String] {
         var discovered = SerialPortDiscovery.listPorts()
         for port in [SimulatedPort.multimeter, SimulatedPort.usbC] where !discovered.contains(port) {

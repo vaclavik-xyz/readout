@@ -32,6 +32,7 @@ final class DashboardViewModel: ObservableObject {
 
     private let configurationService = DashboardConfigurationService()
     private let configurationStore: ConfigurationStore
+    private let runtimeLogStore: RuntimeLogStore
     private let pcBeepController = PcBeepController()
     private var recoveryTask: Task<Void, Never>?
 
@@ -43,7 +44,9 @@ final class DashboardViewModel: ObservableObject {
 
     init() {
         let configURL = configurationService.resolveConfigURL()
+        let runtimeLogDirectoryURL = configurationService.resolveRuntimeLogDirectoryURL()
         configurationStore = ConfigurationStore(configFileURL: configURL)
+        runtimeLogStore = RuntimeLogStore(logDirectoryURL: runtimeLogDirectoryURL)
         setStatusMessage("Config: \(configURL.path)")
 
         Task {
@@ -128,7 +131,35 @@ final class DashboardViewModel: ObservableObject {
 
     func clearRuntimeLogs() {
         runtimeLogs.removeAll(keepingCapacity: true)
-        setStatusMessage("Runtime logs cleared")
+        statusMessage = "Runtime logs cleared"
+        appendRuntimeLog("Runtime logs cleared", level: .info, persist: false)
+
+        Task { [runtimeLogStore] in
+            do {
+                try await runtimeLogStore.clearAll()
+            } catch {
+                await MainActor.run {
+                    reportRuntimeLogPersistenceIssue("Failed to clear persisted logs: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    func exportRuntimeLogs(to destinationURL: URL) {
+        let metadataLines = runtimeLogExportMetadata()
+
+        Task { [runtimeLogStore] in
+            do {
+                try await runtimeLogStore.exportAll(to: destinationURL, metadataLines: metadataLines)
+                await MainActor.run {
+                    setStatusMessage("Runtime logs exported to \(destinationURL.path)")
+                }
+            } catch {
+                await MainActor.run {
+                    setStatusMessage("Failed to export runtime logs: \(error.localizedDescription)", level: .error)
+                }
+            }
+        }
     }
 
     func saveSettings() {
@@ -165,6 +196,7 @@ final class DashboardViewModel: ObservableObject {
     }
 
     private func bootstrap() async {
+        await restorePersistedRuntimeLogs()
         refreshPorts()
 
         do {
@@ -325,24 +357,69 @@ final class DashboardViewModel: ObservableObject {
 
     private func setStatusMessage(_ message: String, level: RuntimeLogLevel = .info) {
         statusMessage = message
-        appendRuntimeLog(message, level: level)
+        appendRuntimeLog(message, level: level, persist: true)
     }
 
-    private func appendRuntimeLog(_ message: String, level: RuntimeLogLevel) {
+    private func appendRuntimeLog(_ message: String, level: RuntimeLogLevel, persist: Bool) {
         if let last = runtimeLogs.last, last.message == message, last.level == level {
             return
         }
 
-        runtimeLogs.append(
-            RuntimeLogEntry(
-                timestamp: Date(),
-                level: level,
-                message: message
-            )
+        let entry = RuntimeLogEntry(
+            timestamp: Date(),
+            level: level,
+            message: message
         )
+        runtimeLogs.append(entry)
 
         if runtimeLogs.count > 200 {
             runtimeLogs.removeFirst(runtimeLogs.count - 200)
         }
+
+        if persist {
+            persistRuntimeLog(entry)
+        }
+    }
+
+    private func restorePersistedRuntimeLogs() async {
+        do {
+            let restoredLogs = try await runtimeLogStore.loadRecent(limit: 200)
+            guard !restoredLogs.isEmpty else {
+                return
+            }
+
+            runtimeLogs = Array((restoredLogs + runtimeLogs).suffix(200))
+        } catch {
+            reportRuntimeLogPersistenceIssue("Failed to load runtime logs: \(error.localizedDescription)")
+        }
+    }
+
+    private func persistRuntimeLog(_ entry: RuntimeLogEntry) {
+        Task { [runtimeLogStore] in
+            do {
+                try await runtimeLogStore.append(entry)
+            } catch {
+                await MainActor.run {
+                    reportRuntimeLogPersistenceIssue("Failed to persist runtime log: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    private func reportRuntimeLogPersistenceIssue(_ message: String) {
+        statusMessage = message
+        appendRuntimeLog(message, level: .warning, persist: false)
+    }
+
+    private func runtimeLogExportMetadata() -> [String] {
+        let formatter = ISO8601DateFormatter()
+        let multimeterPort = configuration.multimeterPort.isEmpty ? "-" : configuration.multimeterPort
+        let usbcPort = configuration.usbcPort.isEmpty ? "-" : configuration.usbcPort
+        return [
+            "Generated: \(formatter.string(from: Date()))",
+            "Mode: \(configuration.useSimulator ? "Simulator" : "Hardware")",
+            "Multimeter Port: \(multimeterPort)",
+            "USB-C Port: \(usbcPort)"
+        ]
     }
 }
