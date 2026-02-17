@@ -155,25 +155,47 @@ struct ContentView: View {
     }
 
     private var charts: some View {
-        HStack(spacing: 14) {
-            chartCard(
-                title: "Multimeter Trend",
-                color: .mint,
-                samples: viewModel.multimeterSamples,
-                highThreshold: viewModel.configuration.dcvHighAlarmEnabled
-                    ? viewModel.configuration.dcvHighAlarmValue
-                    : nil,
-                lowThreshold: viewModel.configuration.dcvLowAlarmEnabled
-                    ? viewModel.configuration.dcvLowAlarmValue
-                    : nil
-            )
-            chartCard(
-                title: "USB-C Power Trend",
-                color: .orange,
-                samples: viewModel.usbcSamples,
-                highThreshold: nil,
-                lowThreshold: nil
-            )
+        VStack(spacing: 10) {
+            HStack {
+                Text("Chart Range")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.8))
+
+                Picker("", selection: $viewModel.selectedChartRange) {
+                    ForEach(ChartRangePreset.allCases) { range in
+                        Text(range.title).tag(range)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 360)
+
+                Spacer()
+
+                Text("MM: \(viewModel.displayedMultimeterSamples.count) pts | USB-C: \(viewModel.displayedUsbCSamples.count) pts")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+
+            HStack(spacing: 14) {
+                chartCard(
+                    title: "Multimeter Trend",
+                    color: .mint,
+                    samples: viewModel.displayedMultimeterSamples,
+                    highThreshold: viewModel.configuration.dcvHighAlarmEnabled
+                        ? viewModel.configuration.dcvHighAlarmValue
+                        : nil,
+                    lowThreshold: viewModel.configuration.dcvLowAlarmEnabled
+                        ? viewModel.configuration.dcvLowAlarmValue
+                        : nil
+                )
+                chartCard(
+                    title: "USB-C Power Trend",
+                    color: .orange,
+                    samples: viewModel.displayedUsbCSamples,
+                    highThreshold: nil,
+                    lowThreshold: nil
+                )
+            }
         }
     }
 

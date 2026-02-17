@@ -20,6 +20,7 @@ final class DashboardViewModel: ObservableObject {
 
     @Published var multimeterSamples: [ChartSample] = []
     @Published var usbcSamples: [ChartSample] = []
+    @Published var selectedChartRange: ChartRangePreset = .twoMinutes
 
     @Published var configuration: AppConfiguration = .init()
     @Published var editableConfiguration: AppConfiguration = .init()
@@ -117,6 +118,10 @@ final class DashboardViewModel: ObservableObject {
         multimeterSamples.removeAll(keepingCapacity: true)
         usbcSamples.removeAll(keepingCapacity: true)
         setStatusMessage("Charts cleared")
+    }
+
+    func setChartRange(_ range: ChartRangePreset) {
+        selectedChartRange = range
     }
 
     func resetVisualState() {
@@ -350,6 +355,14 @@ final class DashboardViewModel: ObservableObject {
         }
     }
 
+    var displayedMultimeterSamples: [ChartSample] {
+        downsampleForDisplay(multimeterSamples)
+    }
+
+    var displayedUsbCSamples: [ChartSample] {
+        downsampleForDisplay(usbcSamples)
+    }
+
     private func runRecoverySequence() async {
         defer {
             isRecoveryInProgress = false
@@ -462,6 +475,18 @@ final class DashboardViewModel: ObservableObject {
             "Multimeter Port: \(multimeterPort)",
             "USB-C Port: \(usbcPort)"
         ]
+    }
+
+    private func downsampleForDisplay(_ samples: [ChartSample]) -> [ChartSample] {
+        let filtered = ChartSamplingService.filtered(
+            samples: samples,
+            range: selectedChartRange,
+            now: Date()
+        )
+        return ChartSamplingService.downsampleMinMax(
+            samples: filtered,
+            maxPoints: 280
+        )
     }
 
     private func makeDiagnosticsBundleInput() -> DiagnosticsBundleInput {
