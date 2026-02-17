@@ -108,6 +108,13 @@ struct SettingsView: View {
                     Text("When enabled, app uses internal simulated ports SIM_MULTIMETER and SIM_USBC.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+
+                    Stepper(value: $configuration.outputQueueCapacity, in: 8...2048, step: 8) {
+                        Text("Output queue capacity: \(configuration.outputQueueCapacity)")
+                    }
+                    Stepper(value: $configuration.outputQueueMaxRetryAttempts, in: 0...10) {
+                        Text("Output retries: \(configuration.outputQueueMaxRetryAttempts)")
+                    }
                 }
 
                 validationSection

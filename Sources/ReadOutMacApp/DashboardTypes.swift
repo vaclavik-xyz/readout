@@ -20,6 +20,7 @@ enum RuntimeEvent: Sendable {
     case multimeterMeasurement(DeviceMeasurement)
     case usbcMeasurement(DeviceMeasurement)
     case runtimeError(String)
+    case runtimeLog(RuntimeLogLevel, String)
 }
 
 enum RuntimeLogLevel: String, Sendable {

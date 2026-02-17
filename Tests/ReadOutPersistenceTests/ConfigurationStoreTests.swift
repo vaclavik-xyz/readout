@@ -63,6 +63,8 @@ func numericValuesAreClampedOnLoad() throws {
     let raw: [String: Any] = [
         "sample_rate_hz": 0,
         "graph_history_seconds": 10_000,
+        "output_queue_capacity": 4,
+        "output_queue_max_retry_attempts": 99,
         "short_threshold": -20.0,
         "pc_beep_volume": 4.0
     ]
@@ -70,6 +72,8 @@ func numericValuesAreClampedOnLoad() throws {
     let migrated = AppConfiguration.fromDictionary(raw)
     #expect(migrated.sampleRateHz == 1)
     #expect(migrated.graphHistorySeconds == 600)
+    #expect(migrated.outputQueueCapacity == 8)
+    #expect(migrated.outputQueueMaxRetryAttempts == 10)
     #expect(migrated.shortThreshold == 0.1)
     #expect(migrated.pcBeepVolume == 1.0)
 }

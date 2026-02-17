@@ -68,8 +68,25 @@ actor ReadOutRuntime {
 
         let csvLogger = CsvLogger()
         let obsWriter = ObsOutputWriter()
+        let csvQueue = OutputWriteQueue(
+            name: "multimeter-csv",
+            capacity: configuration.outputQueueCapacity,
+            maxRetryAttempts: configuration.outputQueueMaxRetryAttempts
+        ) { level, message in
+            onEvent(.runtimeLog(level, message))
+        }
+        let obsQueue = OutputWriteQueue(
+            name: "multimeter-obs",
+            capacity: configuration.outputQueueCapacity,
+            maxRetryAttempts: configuration.outputQueueMaxRetryAttempts
+        ) { level, message in
+            onEvent(.runtimeLog(level, message))
+        }
+        onEvent(.runtimeLog(
+            .info,
+            "Output queues ready for multimeter (capacity \(configuration.outputQueueCapacity), retries \(configuration.outputQueueMaxRetryAttempts))."
+        ))
         var reconnectAttempt = 0
-        var outputRetryGate = OutputRetryGate()
 
         while !Task.isCancelled {
             onEvent(.multimeterStatus(.connecting, nil))
@@ -109,21 +126,14 @@ actor ReadOutRuntime {
                             configuration: alertConfiguration
                         )
 
-                        let now = Date()
-                        if outputRetryGate.shouldAttempt(at: now) {
-                            do {
-                                try await handleMultimeterOutputs(
-                                    measurement,
-                                    configuration: configuration,
-                                    csvLogger: csvLogger,
-                                    obsWriter: obsWriter
-                                )
-                                outputRetryGate.recordSuccess()
-                            } catch {
-                                outputRetryGate.recordFailure(at: now, cooldownSeconds: 2.0)
-                                onEvent(.runtimeError("Multimeter output write failed: \(error.localizedDescription)"))
-                            }
-                        }
+                        await enqueueMultimeterOutputs(
+                            measurement,
+                            configuration: configuration,
+                            csvLogger: csvLogger,
+                            obsWriter: obsWriter,
+                            csvQueue: csvQueue,
+                            obsQueue: obsQueue
+                        )
 
                         onEvent(.multimeterMeasurement(measurement))
                     }
@@ -146,6 +156,8 @@ actor ReadOutRuntime {
             await sleep(seconds: delay)
         }
 
+        await csvQueue.shutdown(flush: true)
+        await obsQueue.shutdown(flush: true)
         onEvent(.multimeterStatus(.disconnected, nil))
     }
 
@@ -157,8 +169,25 @@ actor ReadOutRuntime {
 
         let csvLogger = CsvLogger()
         let obsWriter = ObsOutputWriter()
+        let csvQueue = OutputWriteQueue(
+            name: "usbc-csv",
+            capacity: configuration.outputQueueCapacity,
+            maxRetryAttempts: configuration.outputQueueMaxRetryAttempts
+        ) { level, message in
+            onEvent(.runtimeLog(level, message))
+        }
+        let obsQueue = OutputWriteQueue(
+            name: "usbc-obs",
+            capacity: configuration.outputQueueCapacity,
+            maxRetryAttempts: configuration.outputQueueMaxRetryAttempts
+        ) { level, message in
+            onEvent(.runtimeLog(level, message))
+        }
+        onEvent(.runtimeLog(
+            .info,
+            "Output queues ready for USB-C meter (capacity \(configuration.outputQueueCapacity), retries \(configuration.outputQueueMaxRetryAttempts))."
+        ))
         var reconnectAttempt = 0
-        var outputRetryGate = OutputRetryGate()
 
         while !Task.isCancelled {
             onEvent(.usbcStatus(.connecting, nil))
@@ -187,21 +216,14 @@ actor ReadOutRuntime {
 
                 while !Task.isCancelled {
                     if let measurement = try await driver.readMeasurement(at: Date()) {
-                        let now = Date()
-                        if outputRetryGate.shouldAttempt(at: now) {
-                            do {
-                                try await handleUsbCOutputs(
-                                    measurement,
-                                    configuration: configuration,
-                                    csvLogger: csvLogger,
-                                    obsWriter: obsWriter
-                                )
-                                outputRetryGate.recordSuccess()
-                            } catch {
-                                outputRetryGate.recordFailure(at: now, cooldownSeconds: 2.0)
-                                onEvent(.runtimeError("USB-C output write failed: \(error.localizedDescription)"))
-                            }
-                        }
+                        await enqueueUsbCOutputs(
+                            measurement,
+                            configuration: configuration,
+                            csvLogger: csvLogger,
+                            obsWriter: obsWriter,
+                            csvQueue: csvQueue,
+                            obsQueue: obsQueue
+                        )
 
                         onEvent(.usbcMeasurement(measurement))
                     }
@@ -222,6 +244,8 @@ actor ReadOutRuntime {
             await sleep(seconds: delay)
         }
 
+        await csvQueue.shutdown(flush: true)
+        await obsQueue.shutdown(flush: true)
         onEvent(.usbcStatus(.disconnected, nil))
     }
 
@@ -237,44 +261,68 @@ actor ReadOutRuntime {
         try? await Task.sleep(nanoseconds: nanos)
     }
 
-    private static func handleMultimeterOutputs(
+    private static func enqueueMultimeterOutputs(
         _ measurement: DeviceMeasurement,
         configuration: AppConfiguration,
         csvLogger: CsvLogger,
-        obsWriter: ObsOutputWriter
-    ) async throws {
+        obsWriter: ObsOutputWriter,
+        csvQueue: OutputWriteQueue,
+        obsQueue: OutputWriteQueue
+    ) async {
         let display = MeasurementDisplayFormatter.multimeterPrimary(measurement)
+        let mode = MeasurementDisplayFormatter.multimeterModeTitle(measurement)
 
         if configuration.multimeterCsvLoggingEnabled {
-            try await csvLogger.logMultimeter(
-                to: configuration.multimeterCsvLogFilePath,
-                measurement: measurement,
-                formattedValue: display
-            )
+            let csvPath = configuration.multimeterCsvLogFilePath
+            let measurementSnapshot = measurement
+            let displaySnapshot = display
+            await csvQueue.enqueue {
+                try await csvLogger.logMultimeter(
+                    to: csvPath,
+                    measurement: measurementSnapshot,
+                    formattedValue: displaySnapshot
+                )
+            }
         }
 
-        try await obsWriter.writeMultimeter(
-            to: configuration.multimeterOutputFile,
-            mode: configuration.multimeterObsOutputMode,
-            displayText: display,
-            displayUnit: measurement.primaryUnit,
-            modeText: MeasurementDisplayFormatter.multimeterModeTitle(measurement),
-            label: configuration.multimeterValueLabel,
-            customTemplate: configuration.multimeterObsCustomTemplate
-        )
+        let outputPath = configuration.multimeterOutputFile
+        if !outputPath.isEmpty {
+            let outputMode = configuration.multimeterObsOutputMode
+            let displayUnit = measurement.primaryUnit
+            let label = configuration.multimeterValueLabel
+            let template = configuration.multimeterObsCustomTemplate
+
+            await obsQueue.enqueue {
+                try await obsWriter.writeMultimeter(
+                    to: outputPath,
+                    mode: outputMode,
+                    displayText: display,
+                    displayUnit: displayUnit,
+                    modeText: mode,
+                    label: label,
+                    customTemplate: template
+                )
+            }
+        }
     }
 
-    private static func handleUsbCOutputs(
+    private static func enqueueUsbCOutputs(
         _ measurement: DeviceMeasurement,
         configuration: AppConfiguration,
         csvLogger: CsvLogger,
-        obsWriter: ObsOutputWriter
-    ) async throws {
+        obsWriter: ObsOutputWriter,
+        csvQueue: OutputWriteQueue,
+        obsQueue: OutputWriteQueue
+    ) async {
         if configuration.usbcCsvLoggingEnabled {
-            try await csvLogger.logUsbC(
-                to: configuration.usbcCsvLogFilePath,
-                measurement: measurement
-            )
+            let csvPath = configuration.usbcCsvLogFilePath
+            let measurementSnapshot = measurement
+            await csvQueue.enqueue {
+                try await csvLogger.logUsbC(
+                    to: csvPath,
+                    measurement: measurementSnapshot
+                )
+            }
         }
 
         guard
@@ -285,14 +333,22 @@ actor ReadOutRuntime {
             return
         }
 
-        try await obsWriter.writeUsbC(
-            to: configuration.usbcOutputFile,
-            mode: configuration.usbcObsOutputMode,
-            voltage: voltage,
-            current: current,
-            power: power,
-            label: configuration.usbcValueLabel,
-            customTemplate: configuration.usbcObsCustomTemplate
-        )
+        let outputPath = configuration.usbcOutputFile
+        if !outputPath.isEmpty {
+            let outputMode = configuration.usbcObsOutputMode
+            let label = configuration.usbcValueLabel
+            let template = configuration.usbcObsCustomTemplate
+            await obsQueue.enqueue {
+                try await obsWriter.writeUsbC(
+                    to: outputPath,
+                    mode: outputMode,
+                    voltage: voltage,
+                    current: current,
+                    power: power,
+                    label: label,
+                    customTemplate: template
+                )
+            }
+        }
     }
 }

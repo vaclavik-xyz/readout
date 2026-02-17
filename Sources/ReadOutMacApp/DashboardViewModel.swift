@@ -233,6 +233,12 @@ final class DashboardViewModel: ObservableObject {
         case .runtimeError(let message):
             setStatusMessage(message, level: .error)
 
+        case .runtimeLog(let level, let message):
+            if level == .warning || level == .error {
+                statusMessage = message
+            }
+            appendRuntimeLog(message, level: level, persist: true)
+
         case .multimeterMeasurement(let measurement):
             handleMultimeterMeasurement(measurement)
 

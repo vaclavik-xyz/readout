@@ -64,3 +64,16 @@ func dcvAlarmRangeMustBeOrdered() {
     #expect(result.hasErrors == true)
     #expect(result.issues.contains(where: { $0.code == "dcv_alarm.invalid_range" }))
 }
+
+@Test
+func outputQueueParametersMustStayInRange() {
+    var config = AppConfiguration()
+    config.outputQueueCapacity = 2
+    config.outputQueueMaxRetryAttempts = 99
+
+    let result = AppConfigurationValidator.validate(config)
+
+    #expect(result.hasErrors == true)
+    #expect(result.issues.contains(where: { $0.code == "output_queue_capacity.out_of_range" }))
+    #expect(result.issues.contains(where: { $0.code == "output_queue_retries.out_of_range" }))
+}

@@ -79,6 +79,22 @@ public enum AppConfigurationValidator {
             ))
         }
 
+        if !(8...2048).contains(config.outputQueueCapacity) {
+            issues.append(.init(
+                severity: .error,
+                code: "output_queue_capacity.out_of_range",
+                message: "Output queue capacity must be between 8 and 2048."
+            ))
+        }
+
+        if !(0...10).contains(config.outputQueueMaxRetryAttempts) {
+            issues.append(.init(
+                severity: .error,
+                code: "output_queue_retries.out_of_range",
+                message: "Output queue retry attempts must be between 0 and 10."
+            ))
+        }
+
         if config.shortThreshold < 0.1 {
             issues.append(.init(
                 severity: .error,

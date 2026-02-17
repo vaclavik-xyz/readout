@@ -49,6 +49,8 @@ struct DashboardConfigurationService {
 
         config.sampleRateHz = max(1, min(50, config.sampleRateHz))
         config.graphHistorySeconds = max(5, min(600, config.graphHistorySeconds))
+        config.outputQueueCapacity = max(8, min(2048, config.outputQueueCapacity))
+        config.outputQueueMaxRetryAttempts = max(0, min(10, config.outputQueueMaxRetryAttempts))
         config.shortThreshold = max(0.1, config.shortThreshold)
 
         if config.useSimulator {

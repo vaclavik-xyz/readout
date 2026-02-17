@@ -17,6 +17,8 @@ public struct AppConfiguration: Sendable, Equatable {
 
     public var sampleRateHz: Int = 10
     public var graphHistorySeconds: Int = 30
+    public var outputQueueCapacity: Int = 256
+    public var outputQueueMaxRetryAttempts: Int = 3
 
     public var shortThreshold: Double = 2.0
     public var beepOnShortMeter: Bool = false
@@ -91,6 +93,8 @@ public struct AppConfiguration: Sendable, Equatable {
 
         config.sampleRateHz = max(1, min(50, int("sample_rate_hz", default: config.sampleRateHz)))
         config.graphHistorySeconds = max(5, min(600, int("graph_history_seconds", default: config.graphHistorySeconds)))
+        config.outputQueueCapacity = max(8, min(2048, int("output_queue_capacity", default: config.outputQueueCapacity)))
+        config.outputQueueMaxRetryAttempts = max(0, min(10, int("output_queue_max_retry_attempts", default: config.outputQueueMaxRetryAttempts)))
 
         config.shortThreshold = max(0.1, double("short_threshold", default: config.shortThreshold))
         config.beepOnShortMeter = bool("beep_on_short_meter", default: config.beepOnShortMeter)
@@ -157,6 +161,8 @@ public struct AppConfiguration: Sendable, Equatable {
             "use_simulator": useSimulator,
             "sample_rate_hz": sampleRateHz,
             "graph_history_seconds": graphHistorySeconds,
+            "output_queue_capacity": outputQueueCapacity,
+            "output_queue_max_retry_attempts": outputQueueMaxRetryAttempts,
             "short_threshold": shortThreshold,
             "beep_on_short_meter": beepOnShortMeter,
             "beep_on_short_pc": beepOnShortPC,
