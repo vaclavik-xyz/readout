@@ -56,5 +56,9 @@ let package = Package(
             name: "ReadOutPersistenceTests",
             dependencies: ["ReadOutPersistence"]
         ),
+        .testTarget(
+            name: "ReadOutMacAppTests",
+            dependencies: ["ReadOutMacApp", "ReadOutCore", "ReadOutPersistence", "ReadOutIO"]
+        ),
     ]
 )
