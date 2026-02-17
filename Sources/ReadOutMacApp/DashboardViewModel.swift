@@ -524,6 +524,16 @@ final class DashboardViewModel: ObservableObject {
 
     func saveSettings() {
         let newConfig = normalizedConfiguration(editableConfiguration)
+        let validation = AppConfigurationValidator.validate(newConfig)
+        if validation.hasErrors {
+            if let firstError = validation.issues.first(where: { $0.severity == .error }) {
+                statusMessage = "Cannot save settings: \(firstError.message)"
+            } else {
+                statusMessage = "Cannot save settings due to invalid configuration."
+            }
+            return
+        }
+
         configuration = newConfig
         isSettingsPresented = false
 

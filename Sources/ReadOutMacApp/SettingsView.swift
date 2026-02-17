@@ -1,5 +1,8 @@
 import SwiftUI
 import ReadOutPersistence
+#if canImport(AppKit)
+import AppKit
+#endif
 
 struct SettingsView: View {
     @Binding var configuration: AppConfiguration
@@ -8,6 +11,14 @@ struct SettingsView: View {
     let onRefreshPorts: () -> Void
     let onCancel: () -> Void
     let onSave: () -> Void
+
+    private var validation: AppConfigurationValidationResult {
+        AppConfigurationValidator.validate(configuration)
+    }
+
+    private var hasBlockingErrors: Bool {
+        validation.hasErrors
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,7 +35,9 @@ struct SettingsView: View {
                     customTemplate: $configuration.multimeterObsCustomTemplate,
                     valueLabel: $configuration.multimeterValueLabel,
                     csvEnabled: $configuration.multimeterCsvLoggingEnabled,
-                    csvPath: $configuration.multimeterCsvLogFilePath
+                    csvPath: $configuration.multimeterCsvLogFilePath,
+                    outputSuggestedFileName: "multimeter_output.txt",
+                    csvSuggestedFileName: "multimeter_log.csv"
                 )
 
                 deviceSection(
@@ -37,7 +50,9 @@ struct SettingsView: View {
                     customTemplate: $configuration.usbcObsCustomTemplate,
                     valueLabel: $configuration.usbcValueLabel,
                     csvEnabled: $configuration.usbcCsvLoggingEnabled,
-                    csvPath: $configuration.usbcCsvLogFilePath
+                    csvPath: $configuration.usbcCsvLogFilePath,
+                    outputSuggestedFileName: "usbc_output.txt",
+                    csvSuggestedFileName: "usbc_log.csv"
                 )
 
                 Section("Sampling") {
@@ -56,7 +71,7 @@ struct SettingsView: View {
                         TextField("Threshold", value: $configuration.shortThreshold, format: .number.precision(.fractionLength(1...3)))
                             .frame(width: 90)
                             .textFieldStyle(.roundedBorder)
-                        Text("Ω")
+                        Text("Ohm")
                     }
 
                     Toggle("Enable meter beeper for SHORT", isOn: $configuration.beepOnShortMeter)
@@ -94,6 +109,8 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
+                validationSection
             }
             .formStyle(.grouped)
 
@@ -106,7 +123,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("readOut Settings")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
-                Text("Configure ports, reconnect policy, and output sinks")
+                Text("Configure ports, reconnect policy, output sinks and alarms")
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
             }
@@ -119,6 +136,22 @@ struct SettingsView: View {
         .padding(.horizontal, 20)
         .padding(.top, 18)
         .padding(.bottom, 10)
+    }
+
+    private var validationSection: some View {
+        Section("Validation") {
+            if validation.issues.isEmpty {
+                Label("Configuration looks good.", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+            } else {
+                ForEach(validation.issues) { issue in
+                    Label(issue.message, systemImage: issue.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
+                        .foregroundStyle(issue.severity == .error ? .red : .orange)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                }
+            }
+        }
     }
 
     private var footer: some View {
@@ -134,6 +167,7 @@ struct SettingsView: View {
                 onSave()
             }
             .buttonStyle(.borderedProminent)
+            .disabled(hasBlockingErrors)
         }
         .padding(16)
         .background(.quaternary.opacity(0.15))
@@ -149,14 +183,31 @@ struct SettingsView: View {
         customTemplate: Binding<String>,
         valueLabel: Binding<String>,
         csvEnabled: Binding<Bool>,
-        csvPath: Binding<String>
+        csvPath: Binding<String>,
+        outputSuggestedFileName: String,
+        csvSuggestedFileName: String
     ) -> some View {
         Section(title) {
             Toggle("Enabled", isOn: enabled)
             Toggle("Auto reconnect", isOn: autoReconnect)
 
-            TextField("Serial port (e.g. /dev/cu.usbserial-0001)", text: port)
-                .textFieldStyle(.roundedBorder)
+            HStack {
+                TextField("Serial port (e.g. /dev/cu.usbserial-0001)", text: port)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(configuration.useSimulator)
+
+                Button("Clear") {
+                    port.wrappedValue = ""
+                }
+                .buttonStyle(.bordered)
+                .disabled(configuration.useSimulator)
+            }
+
+            if configuration.useSimulator {
+                Text("Simulator mode forces SIM ports and ignores hardware port fields.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             if !availablePorts.isEmpty {
                 Menu("Use detected port") {
@@ -166,12 +217,16 @@ struct SettingsView: View {
                         }
                     }
                 }
+                .disabled(configuration.useSimulator)
             }
 
             Divider()
 
-            TextField("OBS output file path", text: outputPath)
-                .textFieldStyle(.roundedBorder)
+            pathField(
+                title: "OBS output file",
+                text: outputPath,
+                suggestedFileName: outputSuggestedFileName
+            )
 
             Picker("OBS output mode", selection: outputMode) {
                 Text("Value only").tag(AppConfiguration.ObsOutputMode.valueOnly)
@@ -190,9 +245,60 @@ struct SettingsView: View {
 
             Toggle("CSV logging", isOn: csvEnabled)
             if csvEnabled.wrappedValue {
-                TextField("CSV log file path", text: csvPath)
-                    .textFieldStyle(.roundedBorder)
+                pathField(
+                    title: "CSV log file",
+                    text: csvPath,
+                    suggestedFileName: csvSuggestedFileName
+                )
             }
         }
+    }
+
+    private func pathField(
+        title: String,
+        text: Binding<String>,
+        suggestedFileName: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack {
+                TextField(title, text: text)
+                    .textFieldStyle(.roundedBorder)
+
+                Button("Browse") {
+                    browseFilePath(text, suggestedFileName: suggestedFileName)
+                }
+                .buttonStyle(.bordered)
+
+                Button("Clear") {
+                    text.wrappedValue = ""
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+    }
+
+    private func browseFilePath(_ binding: Binding<String>, suggestedFileName: String) {
+        #if canImport(AppKit)
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.title = "Choose output file"
+
+        let currentPath = binding.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !currentPath.isEmpty {
+            let url = URL(fileURLWithPath: currentPath)
+            panel.directoryURL = url.deletingLastPathComponent()
+            panel.nameFieldStringValue = url.lastPathComponent
+        } else {
+            panel.nameFieldStringValue = suggestedFileName
+        }
+
+        if panel.runModal() == .OK, let selectedURL = panel.url {
+            binding.wrappedValue = selectedURL.path
+        }
+        #endif
     }
 }

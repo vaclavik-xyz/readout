@@ -48,6 +48,7 @@ Native macOS measurement app rewrite focused on speed, reliability, and clean UI
   - executable target `ReadOutMacApp`
   - dashboard with live driver runtime + dual charts
   - settings sheet wired to persistent JSON config
+  - settings now include file pickers + inline validation
   - serial port refresh + reconnect handling
   - live CSV + OBS/text output wiring
   - built-in simulator mode (`SIM_MULTIMETER`, `SIM_USBC`) for no-hardware testing
@@ -56,5 +57,5 @@ Native macOS measurement app rewrite focused on speed, reliability, and clean UI
 ## Next Milestones
 1. Add real device capture fixtures (multimeter + USB-C) to expand compatibility matrix
 2. Add long-run soak tests for reconnect + serial fault scenarios
-3. Add richer settings UX (file pickers + validation feedback)
-4. Add alarm visualization polish (per-state color accents and timeline markers)
+3. Add alarm visualization polish (per-state color accents and timeline markers)
+4. Split large `DashboardViewModel` into smaller runtime/services for maintainability
