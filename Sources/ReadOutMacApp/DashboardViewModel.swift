@@ -5,6 +5,11 @@ import ReadOutPersistence
 
 @MainActor
 final class DashboardViewModel: ObservableObject {
+    private enum UIRefreshMode: String {
+        case normal = "normal"
+        case highLoad = "high-load"
+    }
+
     private struct MultimeterPresentationSnapshot {
         let primary: String
         let secondary: String
@@ -97,8 +102,18 @@ final class DashboardViewModel: ObservableObject {
     private var pendingMultimeterSnapshot: MultimeterPresentationSnapshot?
     private var pendingUsbCSnapshot: UsbCPresentationSnapshot?
     private var pendingRuntimeLogs: [RuntimeLogEntry] = []
-    private let uiRefreshCadenceHz = 10
+    private let uiRefreshNormalCadenceHz = 10
+    private let uiRefreshHighLoadCadenceHz = 6
+    private let uiRefreshEnterHighLoadScore = 3
+    private let uiRefreshExitHighLoadScore = 5
     private var uiRefreshTask: Task<Void, Never>?
+    private var uiRefreshMode: UIRefreshMode = .normal
+    private var uiRefreshHighLoadScore = 0
+    private var uiRefreshRecoverScore = 0
+    private var lastUIRefreshProcessingMs: Double = 0
+    private var smoothedUIRefreshProcessingMs: Double = 0
+    private var uiRefreshModeSwitchCount = 0
+    private var pendingMeasurementEventsSinceLastRefresh = 0
     private var multimeterChartDirty = true
     private var usbCChartDirty = true
     private var chartMarkersDirty = true
@@ -106,6 +121,9 @@ final class DashboardViewModel: ObservableObject {
     private var pendingRefreshReasons: Set<String> = ["init"]
     private var appliedUIRefreshTicks = 0
     private var skippedUIRefreshTicks = 0
+#if DEBUG
+    private var debugForcedUIRefreshProcessingMs: Double?
+#endif
 #if DEBUG
     private var lastMultimeterPipelineMetric = ChartPipelineMetric(
         sourcePointCount: 0,
@@ -651,6 +669,7 @@ final class DashboardViewModel: ObservableObject {
             trimChartsIfNeeded()
         }
 
+        pendingMeasurementEventsSinceLastRefresh += 1
         markChartRefresh(multimeter: true, markers: true, reason: "multimeter_measurement")
     }
 
@@ -686,6 +705,7 @@ final class DashboardViewModel: ObservableObject {
             power: powerText,
             energy: "Energy: \(energyMWh) mWh | \(energyMAh) mAh"
         )
+        pendingMeasurementEventsSinceLastRefresh += 1
         markChartRefresh(usbc: true, reason: "usbc_measurement")
     }
 
@@ -923,9 +943,11 @@ final class DashboardViewModel: ObservableObject {
             return
         }
 
-        let intervalNanos = UInt64(1_000_000_000 / max(1, uiRefreshCadenceHz))
         uiRefreshTask = Task { [weak self] in
             while !Task.isCancelled {
+                let intervalNanos = await MainActor.run {
+                    self?.activeUIRefreshIntervalNanos ?? UInt64(100_000_000)
+                }
                 try? await Task.sleep(nanoseconds: intervalNanos)
                 await MainActor.run {
                     self?.processCoalescedUIRefreshTick(force: false)
@@ -952,6 +974,7 @@ final class DashboardViewModel: ObservableObject {
         let hasPendingCharts = chartRefreshPending
         let hasWork = force || hasPendingPresentation || hasPendingCharts
         guard hasWork else {
+            recoverUIRefreshModeOnIdle()
             return
         }
 
@@ -960,6 +983,9 @@ final class DashboardViewModel: ObservableObject {
             return
         }
 
+        let tickStart = DispatchTime.now().uptimeNanoseconds
+        let measurementBurstCount = pendingMeasurementEventsSinceLastRefresh
+        pendingMeasurementEventsSinceLastRefresh = 0
         appliedUIRefreshTicks += 1
         applyPendingPresentationSnapshots()
         flushPendingRuntimeLogsToUI()
@@ -973,6 +999,19 @@ final class DashboardViewModel: ObservableObject {
             usbCChartDirty = false
             chartMarkersDirty = false
         }
+
+        let measuredMs = Double(DispatchTime.now().uptimeNanoseconds - tickStart) / 1_000_000
+#if DEBUG
+        let effectiveMs = debugForcedUIRefreshProcessingMs ?? measuredMs
+#else
+        let effectiveMs = measuredMs
+#endif
+        updateAdaptiveUIRefreshMode(
+            processingMilliseconds: effectiveMs,
+            hadPendingPresentation: hasPendingPresentation,
+            hadPendingCharts: hasPendingCharts,
+            measurementBurstCount: measurementBurstCount
+        )
     }
 
     private func applyPendingPresentationSnapshots() {
@@ -998,6 +1037,9 @@ final class DashboardViewModel: ObservableObject {
         let now = Date()
         let showMultimeter = deviceVisibility != .usbc
         let showUsbC = deviceVisibility != .multimeter
+        let chartMaxPoints = chartMaxPointsForCurrentRefreshMode(
+            showingBothDevices: showMultimeter && showUsbC
+        )
 
         if force || multimeterChartDirty {
             if showMultimeter {
@@ -1005,7 +1047,7 @@ final class DashboardViewModel: ObservableObject {
                     samples: multimeterSamples,
                     range: selectedChartRange,
                     now: now,
-                    maxPoints: 280
+                    maxPoints: chartMaxPoints
                 )
                 displayedMultimeterSamples = multimeterPipeline.samples
 #if DEBUG
@@ -1030,7 +1072,7 @@ final class DashboardViewModel: ObservableObject {
                     samples: usbcSamples,
                     range: selectedChartRange,
                     now: now,
-                    maxPoints: 280
+                    maxPoints: chartMaxPoints
                 )
                 displayedUsbCSamples = usbCPipeline.samples
 #if DEBUG
@@ -1060,22 +1102,107 @@ final class DashboardViewModel: ObservableObject {
         }
 
 #if DEBUG
-        chartPerformanceSummary = String(
-            format: "Pipeline %@ | MM %d→%d→%d (%.2fms) | USB-C %d→%d→%d (%.2fms) | UI ticks %d applied / %d skipped",
-            reason,
-            lastMultimeterPipelineMetric.sourcePointCount,
-            lastMultimeterPipelineMetric.filteredPointCount,
-            lastMultimeterPipelineMetric.renderedPointCount,
-            lastMultimeterPipelineMetric.processingMilliseconds,
-            lastUsbCPipelineMetric.sourcePointCount,
-            lastUsbCPipelineMetric.filteredPointCount,
-            lastUsbCPipelineMetric.renderedPointCount,
-            lastUsbCPipelineMetric.processingMilliseconds,
-            appliedUIRefreshTicks,
-            skippedUIRefreshTicks
-        )
+        chartPerformanceSummary =
+            "Pipeline \(reason) | mode \(uiRefreshMode.rawValue) @ \(activeUIRefreshCadenceHz)Hz | " +
+            "MM \(lastMultimeterPipelineMetric.sourcePointCount)→\(lastMultimeterPipelineMetric.filteredPointCount)" +
+            "→\(lastMultimeterPipelineMetric.renderedPointCount) (\(formatMilliseconds(lastMultimeterPipelineMetric.processingMilliseconds))ms) | " +
+            "USB-C \(lastUsbCPipelineMetric.sourcePointCount)→\(lastUsbCPipelineMetric.filteredPointCount)" +
+            "→\(lastUsbCPipelineMetric.renderedPointCount) (\(formatMilliseconds(lastUsbCPipelineMetric.processingMilliseconds))ms) | " +
+            "tick \(formatMilliseconds(lastUIRefreshProcessingMs))/\(formatMilliseconds(smoothedUIRefreshProcessingMs))ms | " +
+            "UI ticks \(appliedUIRefreshTicks) applied / \(skippedUIRefreshTicks) skipped | switches \(uiRefreshModeSwitchCount)"
 #endif
     }
+
+    private var activeUIRefreshCadenceHz: Int {
+        switch uiRefreshMode {
+        case .normal:
+            return uiRefreshNormalCadenceHz
+        case .highLoad:
+            return uiRefreshHighLoadCadenceHz
+        }
+    }
+
+    private var activeUIRefreshIntervalNanos: UInt64 {
+        UInt64(1_000_000_000 / max(1, activeUIRefreshCadenceHz))
+    }
+
+    private func chartMaxPointsForCurrentRefreshMode(showingBothDevices: Bool) -> Int {
+        switch uiRefreshMode {
+        case .normal:
+            return showingBothDevices ? 280 : 320
+        case .highLoad:
+            return showingBothDevices ? 180 : 220
+        }
+    }
+
+    private func recoverUIRefreshModeOnIdle() {
+        uiRefreshHighLoadScore = max(0, uiRefreshHighLoadScore - 1)
+        uiRefreshRecoverScore = min(uiRefreshExitHighLoadScore, uiRefreshRecoverScore + 1)
+        guard uiRefreshMode == .highLoad, uiRefreshRecoverScore >= uiRefreshExitHighLoadScore else {
+            return
+        }
+        switchUIRefreshMode(to: .normal, reason: "idle")
+    }
+
+    private func updateAdaptiveUIRefreshMode(
+        processingMilliseconds: Double,
+        hadPendingPresentation: Bool,
+        hadPendingCharts: Bool,
+        measurementBurstCount: Int
+    ) {
+        lastUIRefreshProcessingMs = processingMilliseconds
+        if smoothedUIRefreshProcessingMs == 0 {
+            smoothedUIRefreshProcessingMs = processingMilliseconds
+        } else {
+            smoothedUIRefreshProcessingMs = (smoothedUIRefreshProcessingMs * 0.75) + (processingMilliseconds * 0.25)
+        }
+
+        let overloadThreshold: Double = uiRefreshMode == .normal ? 14.0 : 18.0
+        let recoveryThreshold: Double = 8.0
+        let isBursting = measurementBurstCount >= 80
+        let overloaded = hadPendingCharts && (smoothedUIRefreshProcessingMs >= overloadThreshold || isBursting)
+        let recoverable = (!hadPendingCharts && measurementBurstCount < 20)
+            || (!hadPendingPresentation && smoothedUIRefreshProcessingMs <= recoveryThreshold)
+
+        if overloaded {
+            let increment = isBursting ? uiRefreshEnterHighLoadScore : 1
+            uiRefreshHighLoadScore = min(uiRefreshEnterHighLoadScore + 4, uiRefreshHighLoadScore + increment)
+            uiRefreshRecoverScore = max(0, uiRefreshRecoverScore - 1)
+        } else if recoverable {
+            uiRefreshRecoverScore = min(uiRefreshExitHighLoadScore + 6, uiRefreshRecoverScore + 1)
+            uiRefreshHighLoadScore = max(0, uiRefreshHighLoadScore - 1)
+        } else {
+            uiRefreshHighLoadScore = max(0, uiRefreshHighLoadScore - 1)
+            uiRefreshRecoverScore = max(0, uiRefreshRecoverScore - 1)
+        }
+
+        if uiRefreshMode == .normal, uiRefreshHighLoadScore >= uiRefreshEnterHighLoadScore {
+            switchUIRefreshMode(to: .highLoad, reason: "processing")
+        } else if uiRefreshMode == .highLoad, uiRefreshRecoverScore >= uiRefreshExitHighLoadScore {
+            switchUIRefreshMode(to: .normal, reason: "recovered")
+        }
+    }
+
+    private func switchUIRefreshMode(to mode: UIRefreshMode, reason: String) {
+        guard uiRefreshMode != mode else {
+            return
+        }
+        uiRefreshMode = mode
+        uiRefreshModeSwitchCount += 1
+        uiRefreshHighLoadScore = 0
+        uiRefreshRecoverScore = 0
+        appendRuntimeLog(
+            "UI refresh mode: \(mode.rawValue) (\(activeUIRefreshCadenceHz)Hz, reason: \(reason))",
+            level: .info,
+            persist: false
+        )
+    }
+
+#if DEBUG
+    private func formatMilliseconds(_ value: Double) -> String {
+        String(format: "%.2f", value)
+    }
+#endif
 
     private func alarmMarkersForDisplay(now: Date) -> [AlarmTimelineMarker] {
         guard let duration = selectedChartRange.durationSeconds else {
@@ -1230,6 +1357,20 @@ final class DashboardViewModel: ObservableObject {
 
     func debugRefreshTickCounters() -> (applied: Int, skipped: Int) {
         (appliedUIRefreshTicks, skippedUIRefreshTicks)
+    }
+
+    func debugSetForcedUIRefreshProcessingMilliseconds(_ value: Double?) {
+        debugForcedUIRefreshProcessingMs = value
+    }
+
+    func debugUIRefreshDiagnostics() -> (mode: String, targetHz: Int, lastTickMs: Double, smoothedTickMs: Double, switches: Int) {
+        (
+            uiRefreshMode.rawValue,
+            activeUIRefreshCadenceHz,
+            lastUIRefreshProcessingMs,
+            smoothedUIRefreshProcessingMs,
+            uiRefreshModeSwitchCount
+        )
     }
 #endif
 }

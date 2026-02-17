@@ -171,3 +171,63 @@ func coalescedRefreshDoesNotScaleLinearlyWithMeasurementBurst() async {
     #expect(appliedDelta > 0)
     #expect(appliedDelta < 50)
 }
+
+@MainActor
+@Test
+func adaptiveRefreshEntersHighLoadModeUnderSustainedTickCost() async {
+    let viewModel = DashboardViewModel()
+    viewModel.debugSetForcedUIRefreshProcessingMilliseconds(24)
+
+    let baseTimestamp = Date()
+    for i in 0..<260 {
+        viewModel.debugInjectMultimeterMeasurement(
+            DeviceMeasurement(
+                device: .multimeter,
+                mode: .dcVoltage,
+                modeString: "VOLT:DC",
+                primaryValue: Double(i) * 0.01,
+                primaryUnit: "V DC",
+                timestamp: baseTimestamp.addingTimeInterval(Double(i) * 0.001)
+            )
+        )
+    }
+
+    try? await Task.sleep(nanoseconds: 700_000_000)
+
+    let diagnostics = viewModel.debugUIRefreshDiagnostics()
+    #expect(diagnostics.mode == "high-load")
+    #expect(diagnostics.targetHz == 6)
+    #expect(diagnostics.targetHz >= 1)
+    #expect(diagnostics.targetHz <= 10)
+}
+
+@MainActor
+@Test
+func adaptiveRefreshReturnsToNormalAfterLoadDrops() async {
+    let viewModel = DashboardViewModel()
+    viewModel.debugSetForcedUIRefreshProcessingMilliseconds(24)
+
+    let baseTimestamp = Date()
+    for i in 0..<260 {
+        viewModel.debugInjectMultimeterMeasurement(
+            DeviceMeasurement(
+                device: .multimeter,
+                mode: .dcVoltage,
+                modeString: "VOLT:DC",
+                primaryValue: Double(i) * 0.01,
+                primaryUnit: "V DC",
+                timestamp: baseTimestamp.addingTimeInterval(Double(i) * 0.001)
+            )
+        )
+    }
+
+    try? await Task.sleep(nanoseconds: 700_000_000)
+    #expect(viewModel.debugUIRefreshDiagnostics().mode == "high-load")
+
+    viewModel.debugSetForcedUIRefreshProcessingMilliseconds(1.2)
+    try? await Task.sleep(nanoseconds: 1_100_000_000)
+
+    let diagnostics = viewModel.debugUIRefreshDiagnostics()
+    #expect(diagnostics.mode == "normal")
+    #expect(diagnostics.targetHz == 10)
+}
