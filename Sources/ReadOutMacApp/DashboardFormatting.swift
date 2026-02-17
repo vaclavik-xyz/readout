@@ -83,8 +83,12 @@ enum DashboardAlertService {
 
     static func shouldBeep(
         for alert: MeasurementAlertState,
-        configuration: AppConfiguration
+        configuration: AppConfiguration,
+        dashboardBeepMasterEnabled: Bool = true
     ) -> Bool {
+        guard dashboardBeepMasterEnabled else {
+            return false
+        }
         let shortBeep = configuration.beepOnShortPC && alert == .short
         let voltageAlarmBeep = configuration.beepOnAlarm && (alert == .highAlarm || alert == .lowAlarm)
         return shortBeep || voltageAlarmBeep

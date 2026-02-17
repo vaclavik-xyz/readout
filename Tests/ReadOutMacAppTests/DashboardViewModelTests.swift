@@ -104,3 +104,41 @@ func renderPauseToggleChangesStateAndStatus() {
     #expect(viewModel.isRenderPaused == false)
     #expect(viewModel.statusMessage == "UI rendering resumed")
 }
+
+@MainActor
+@Test
+func pauseFreezesMeasurementPresentationUntilResume() async {
+    let viewModel = DashboardViewModel()
+
+    let measurement = DeviceMeasurement(
+        device: .multimeter,
+        mode: .dcVoltage,
+        modeString: "VOLT:DC",
+        primaryValue: 12.3456,
+        primaryUnit: "V DC"
+    )
+
+    viewModel.toggleRenderPause()
+    #expect(viewModel.multimeterPrimary == "---")
+
+    viewModel.debugInjectMultimeterMeasurement(measurement)
+    try? await Task.sleep(nanoseconds: 220_000_000)
+    #expect(viewModel.multimeterPrimary == "---")
+
+    viewModel.toggleRenderPause()
+    #expect(viewModel.multimeterPrimary == "12.3456")
+}
+
+@MainActor
+@Test
+func logCaptureDisabledSuppressesInfoButKeepsWarnings() {
+    let viewModel = DashboardViewModel()
+    viewModel.runtimeLogs.removeAll(keepingCapacity: true)
+    viewModel.isRuntimeLogCaptureEnabled = false
+
+    viewModel.debugInjectRuntimeLog(level: .info, message: "info-muted")
+    viewModel.debugInjectRuntimeLog(level: .warning, message: "warn-kept")
+
+    #expect(viewModel.runtimeLogs.contains(where: { $0.message == "info-muted" }) == false)
+    #expect(viewModel.runtimeLogs.contains(where: { $0.message == "warn-kept" }))
+}

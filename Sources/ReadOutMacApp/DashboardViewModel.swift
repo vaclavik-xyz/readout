@@ -834,8 +834,11 @@ final class DashboardViewModel: ObservableObject {
     }
 
     private func updatePcBeep(for alert: MeasurementAlertState) {
-        let shouldBeep = isDashboardBeepEnabled
-            && DashboardAlertService.shouldBeep(for: alert, configuration: configuration)
+        let shouldBeep = DashboardAlertService.shouldBeep(
+            for: alert,
+            configuration: configuration,
+            dashboardBeepMasterEnabled: isDashboardBeepEnabled
+        )
         pcBeepController.setBeeping(shouldBeep)
     }
 
@@ -952,7 +955,7 @@ final class DashboardViewModel: ObservableObject {
             return
         }
 
-        guard !isRenderPaused || force else {
+        guard !isRenderPaused else {
             skippedUIRefreshTicks += 1
             return
         }
@@ -1215,4 +1218,14 @@ final class DashboardViewModel: ObservableObject {
             healthSnapshots.removeFirst(healthSnapshots.count - 500)
         }
     }
+
+#if DEBUG
+    func debugInjectMultimeterMeasurement(_ measurement: DeviceMeasurement) {
+        handleMultimeterMeasurement(measurement)
+    }
+
+    func debugInjectRuntimeLog(level: RuntimeLogLevel, message: String) {
+        appendRuntimeLog(message, level: level, persist: false)
+    }
+#endif
 }

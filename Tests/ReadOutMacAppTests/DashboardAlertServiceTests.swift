@@ -71,3 +71,53 @@ func alertServiceOpenHasNoStatusMessage() {
     #expect(DashboardAlertService.text(for: alert) == "OPEN")
     #expect(DashboardAlertService.statusMessage(for: alert) == nil)
 }
+
+@Test
+func alertServiceBeepPolicyHonorsMasterToggleAndSourceFlags() {
+    var config = AppConfiguration()
+    config.beepOnShortPC = true
+    config.beepOnAlarm = true
+
+    #expect(
+        DashboardAlertService.shouldBeep(
+            for: .short,
+            configuration: config,
+            dashboardBeepMasterEnabled: true
+        )
+    )
+    #expect(
+        DashboardAlertService.shouldBeep(
+            for: .highAlarm,
+            configuration: config,
+            dashboardBeepMasterEnabled: true
+        )
+    )
+    #expect(
+        DashboardAlertService.shouldBeep(
+            for: .lowAlarm,
+            configuration: config,
+            dashboardBeepMasterEnabled: true
+        )
+    )
+    #expect(
+        DashboardAlertService.shouldBeep(
+            for: .open,
+            configuration: config,
+            dashboardBeepMasterEnabled: true
+        ) == false
+    )
+    #expect(
+        DashboardAlertService.shouldBeep(
+            for: .short,
+            configuration: config,
+            dashboardBeepMasterEnabled: false
+        ) == false
+    )
+    #expect(
+        DashboardAlertService.shouldBeep(
+            for: .highAlarm,
+            configuration: config,
+            dashboardBeepMasterEnabled: false
+        ) == false
+    )
+}
