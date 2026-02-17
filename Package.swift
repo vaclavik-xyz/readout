@@ -37,5 +37,9 @@ let package = Package(
             name: "ReadOutCoreTests",
             dependencies: ["ReadOutCore"]
         ),
+        .testTarget(
+            name: "ReadOutIOTests",
+            dependencies: ["ReadOutIO"]
+        ),
     ]
 )

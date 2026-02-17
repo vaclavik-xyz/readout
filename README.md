@@ -22,9 +22,13 @@ Native macOS measurement app rewrite focused on speed, reliability, and clean UI
   - Energy accumulation math
 - Unit test baseline in place for parser compatibility
 - Explicit parser contract documented in `docs/parser-compatibility.md`
+- `ReadOutIO` now contains a tested async device session state machine:
+  - connect / read loop
+  - reconnect with backoff policy
+  - explicit stop lifecycle
 
 ## Next Milestones
-1. Build serial session state machine in `ReadOutIO`
+1. Add real serial transport implementation in `ReadOutIO`
 2. Add fixture-driven compatibility tests from real device captures
 3. Implement SwiftUI macOS app target with dual-device dashboard and graphs
 4. Add settings + CSV/OBS output parity
