@@ -52,4 +52,4 @@ In app:
 - Update `README.md` status/roadmap section
 - Close completed feature issues
 - Tag release: `v1.0.0`
-- Publish release notes with known limitations and deferred features (`#9`)
+- Publish release notes with known limitations and validation summary

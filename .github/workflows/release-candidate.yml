@@ -1,0 +1,133 @@
+name: Release Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      rc_tag:
+        description: "RC tag to create/update (example: v1.0.0-rc1)"
+        required: true
+        default: "v1.0.0-rc1"
+      seed:
+        description: "Seed for soak/readiness runs"
+        required: true
+        default: "42"
+      extended_soak:
+        description: "Run extended 30m soak in readiness check"
+        required: true
+        type: boolean
+        default: false
+      create_tag:
+        description: "Create and push RC tag to origin"
+        required: true
+        type: boolean
+        default: true
+      draft_release:
+        description: "Create or update GitHub draft release for RC tag"
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  readiness:
+    runs-on: macos-latest
+    timeout-minutes: 80
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Show Swift Toolchain
+        run: swift --version
+
+      - name: Run v1 readiness checks
+        run: |
+          set -o pipefail
+          mkdir -p .release-candidate
+          ARGS=(--seed "${{ inputs.seed }}" --output-dir ".release-candidate/readiness")
+          if [[ "${{ inputs.extended_soak }}" == "true" ]]; then
+            ARGS+=(--extended)
+          fi
+          scripts/v1-readiness-check.sh "${ARGS[@]}"
+
+      - name: Upload readiness artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc-readiness-${{ inputs.rc_tag }}-${{ github.run_id }}
+          path: .release-candidate/readiness
+          if-no-files-found: warn
+
+  draft:
+    needs: readiness
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes
+        run: |
+          set -o pipefail
+          mkdir -p .release-candidate
+          scripts/generate-release-notes.sh \
+            --tag "${{ inputs.rc_tag }}" \
+            --output ".release-candidate/release-notes.md"
+
+      - name: Upload release notes artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc-notes-${{ inputs.rc_tag }}-${{ github.run_id }}
+          path: .release-candidate/release-notes.md
+          if-no-files-found: error
+
+      - name: Create and push RC tag
+        if: inputs.create_tag
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.rc_tag }}"
+          if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q "${TAG}"; then
+            echo "Tag ${TAG} already exists on origin. Skipping create."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "readOut release candidate ${TAG}" "${GITHUB_SHA}"
+          git push origin "refs/tags/${TAG}"
+
+      - name: Create or update draft release
+        if: inputs.draft_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.rc_tag }}"
+          TITLE="readOut ${TAG}"
+          NOTES_FILE=".release-candidate/release-notes.md"
+
+          if gh release view "${TAG}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release edit "${TAG}" \
+              --repo "${{ github.repository }}" \
+              --draft=true \
+              --title "${TITLE}" \
+              --notes-file "${NOTES_FILE}"
+          else
+            gh release create "${TAG}" \
+              --repo "${{ github.repository }}" \
+              --draft \
+              --title "${TITLE}" \
+              --notes-file "${NOTES_FILE}"
+          fi

@@ -67,6 +67,7 @@ scripts/v1-readiness-check.sh --extended --seed 42
 Workflows:
 - `.github/workflows/ci-macos.yml`
 - `.github/workflows/nightly-soak.yml`
+- `.github/workflows/release-candidate.yml`
 
 CI enforces:
 - `swift build`
@@ -74,6 +75,12 @@ CI enforces:
 - fixture schema validation + parser drift guard
 - soak smoke run
 - headless app startup smoke
+
+Release-candidate workflow (`workflow_dispatch`) can:
+- run full readiness checks (optional extended soak)
+- generate draft release notes artifact
+- create/push RC tag (example `v1.0.0-rc1`)
+- create/update GitHub draft release for the RC tag
 
 Branch protection setup:
 - `docs/ci-branch-protection.md`
