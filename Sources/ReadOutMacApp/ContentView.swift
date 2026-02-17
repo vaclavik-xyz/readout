@@ -21,14 +21,18 @@ struct ContentView: View {
             )
             .ignoresSafeArea()
 
-            VStack(spacing: 16) {
-                header
-                statusStrip
-                cards
-                charts
-                runtimeLogPanel
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(spacing: 16) {
+                    header
+                    statusStrip
+                    cards
+                    charts
+                    runtimeLogPanel
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .padding(20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .sheet(isPresented: $viewModel.isSettingsPresented) {
             SettingsView(
