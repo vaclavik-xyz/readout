@@ -23,12 +23,13 @@ struct ContentView: View {
 
             ScrollView(.vertical, showsIndicators: true) {
                 VStack(spacing: 16) {
-                    header
-                    statusStrip
-                    cards
-                    charts
-                    runtimeLogPanel
-                }
+                header
+                statusStrip
+                cards
+                alarmHistoryStrip
+                charts
+                runtimeLogPanel
+            }
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
@@ -181,6 +182,7 @@ struct ContentView: View {
                     title: "Multimeter Trend",
                     color: .mint,
                     samples: viewModel.displayedMultimeterSamples,
+                    markers: viewModel.displayedAlarmMarkers,
                     highThreshold: viewModel.configuration.dcvHighAlarmEnabled
                         ? viewModel.configuration.dcvHighAlarmValue
                         : nil,
@@ -192,9 +194,40 @@ struct ContentView: View {
                     title: "USB-C Power Trend",
                     color: .orange,
                     samples: viewModel.displayedUsbCSamples,
+                    markers: [],
                     highThreshold: nil,
                     lowThreshold: nil
                 )
+            }
+        }
+    }
+
+    private var alarmHistoryStrip: some View {
+        Group {
+            if viewModel.displayedAlarmMarkers.isEmpty {
+                EmptyView()
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(viewModel.displayedAlarmMarkers.suffix(12)) { marker in
+                            HStack(spacing: 6) {
+                                Text(marker.timestamp, format: .dateTime.hour().minute().second())
+                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                    .foregroundStyle(.white.opacity(0.6))
+
+                                Text(alarmMarkerLabel(marker.state))
+                                    .font(.system(size: 10, weight: .black, design: .rounded))
+                                    .foregroundStyle(.black.opacity(0.82))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(alarmMarkerColor(marker.state), in: Capsule())
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                    }
+                }
             }
         }
     }
@@ -303,6 +336,7 @@ struct ContentView: View {
         title: String,
         color: Color,
         samples: [ChartSample],
+        markers: [AlarmTimelineMarker],
         highThreshold: Double?,
         lowThreshold: Double?
     ) -> some View {
@@ -343,6 +377,19 @@ struct ContentView: View {
                     RuleMark(y: .value("Low Alarm", lowThreshold))
                         .foregroundStyle(.yellow.opacity(0.8))
                         .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [6, 4]))
+                }
+
+                ForEach(markers) { marker in
+                    RuleMark(x: .value("Alarm", marker.timestamp))
+                        .foregroundStyle(alarmMarkerColor(marker.state).opacity(0.9))
+                        .lineStyle(StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
+                        .annotation(position: .top, alignment: .leading) {
+                            if markers.count <= 8 {
+                                Text(alarmMarkerLabel(marker.state))
+                                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                                    .foregroundStyle(alarmMarkerColor(marker.state))
+                            }
+                        }
                 }
             }
             .chartYAxis {
@@ -443,6 +490,36 @@ struct ContentView: View {
             return .yellow
         case .error:
             return .red
+        }
+    }
+
+    private func alarmMarkerLabel(_ state: MeasurementAlertState) -> String {
+        switch state {
+        case .none:
+            return "NONE"
+        case .short:
+            return "SHORT"
+        case .open:
+            return "OPEN"
+        case .highAlarm:
+            return "HIGH"
+        case .lowAlarm:
+            return "LOW"
+        }
+    }
+
+    private func alarmMarkerColor(_ state: MeasurementAlertState) -> Color {
+        switch state {
+        case .none:
+            return .gray
+        case .short:
+            return .orange
+        case .open:
+            return .pink
+        case .highAlarm:
+            return .red
+        case .lowAlarm:
+            return .yellow
         }
     }
 }

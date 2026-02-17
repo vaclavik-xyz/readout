@@ -100,3 +100,10 @@ struct RuntimeHealthSnapshot: Identifiable, Sendable, Codable {
         self.statusMessage = statusMessage
     }
 }
+
+struct AlarmTimelineMarker: Identifiable, Sendable {
+    let id = UUID()
+    let timestamp: Date
+    let state: MeasurementAlertState
+    let message: String
+}

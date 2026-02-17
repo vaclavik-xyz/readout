@@ -20,6 +20,7 @@ final class DashboardViewModel: ObservableObject {
 
     @Published var multimeterSamples: [ChartSample] = []
     @Published var usbcSamples: [ChartSample] = []
+    @Published var alarmMarkers: [AlarmTimelineMarker] = []
     @Published var selectedChartRange: ChartRangePreset = .twoMinutes
 
     @Published var configuration: AppConfiguration = .init()
@@ -117,6 +118,7 @@ final class DashboardViewModel: ObservableObject {
     func clearCharts() {
         multimeterSamples.removeAll(keepingCapacity: true)
         usbcSamples.removeAll(keepingCapacity: true)
+        alarmMarkers.removeAll(keepingCapacity: true)
         setStatusMessage("Charts cleared")
     }
 
@@ -290,6 +292,7 @@ final class DashboardViewModel: ObservableObject {
     }
 
     private func handleMultimeterMeasurement(_ measurement: DeviceMeasurement) {
+        let previousAlert = multimeterAlertState
         multimeterPrimary = MeasurementDisplayFormatter.multimeterPrimary(measurement)
         multimeterSecondary = MeasurementDisplayFormatter.multimeterSecondary(measurement)
         multimeterMode = MeasurementDisplayFormatter.multimeterModeTitle(measurement)
@@ -297,6 +300,11 @@ final class DashboardViewModel: ObservableObject {
         let alert = DashboardAlertService.evaluate(measurement: measurement, configuration: configuration)
         multimeterAlert = DashboardAlertService.text(for: alert)
         multimeterAlertState = alert
+        appendAlarmMarkerIfNeeded(
+            previousAlert: previousAlert,
+            currentAlert: alert,
+            timestamp: measurement.timestamp
+        )
 
         if let alertMessage = DashboardAlertService.statusMessage(for: alert) {
             setStatusMessage(alertMessage, level: .warning)
@@ -361,6 +369,14 @@ final class DashboardViewModel: ObservableObject {
 
     var displayedUsbCSamples: [ChartSample] {
         downsampleForDisplay(usbcSamples)
+    }
+
+    var displayedAlarmMarkers: [AlarmTimelineMarker] {
+        guard let duration = selectedChartRange.durationSeconds else {
+            return alarmMarkers
+        }
+        let threshold = Date().addingTimeInterval(-duration)
+        return alarmMarkers.filter { $0.timestamp >= threshold }
     }
 
     private func runRecoverySequence() async {
@@ -487,6 +503,30 @@ final class DashboardViewModel: ObservableObject {
             samples: filtered,
             maxPoints: 280
         )
+    }
+
+    private func appendAlarmMarkerIfNeeded(
+        previousAlert: MeasurementAlertState,
+        currentAlert: MeasurementAlertState,
+        timestamp: Date
+    ) {
+        guard previousAlert != currentAlert else {
+            return
+        }
+        guard currentAlert != .none else {
+            return
+        }
+
+        alarmMarkers.append(
+            AlarmTimelineMarker(
+                timestamp: timestamp,
+                state: currentAlert,
+                message: DashboardAlertService.text(for: currentAlert)
+            )
+        )
+        if alarmMarkers.count > 120 {
+            alarmMarkers.removeFirst(alarmMarkers.count - 120)
+        }
     }
 
     private func makeDiagnosticsBundleInput() -> DiagnosticsBundleInput {

@@ -13,11 +13,15 @@ func clearChartsRemovesAllSamples() {
     viewModel.usbcSamples = [
         ChartSample(timestamp: Date(timeIntervalSince1970: 0), value: 2.0)
     ]
+    viewModel.alarmMarkers = [
+        AlarmTimelineMarker(timestamp: Date(timeIntervalSince1970: 0), state: .short, message: "SHORT")
+    ]
 
     viewModel.clearCharts()
 
     #expect(viewModel.multimeterSamples.isEmpty)
     #expect(viewModel.usbcSamples.isEmpty)
+    #expect(viewModel.alarmMarkers.isEmpty)
     #expect(viewModel.statusMessage == "Charts cleared")
 }
 
