@@ -56,6 +56,12 @@ struct ContentView: View {
                 Button("Settings") { viewModel.openSettings() }
                     .buttonStyle(.bordered)
 
+                Button("Clear Charts") { viewModel.clearCharts() }
+                    .buttonStyle(.bordered)
+
+                Button("Reset Alert") { viewModel.resetVisualState() }
+                    .buttonStyle(.bordered)
+
                 if viewModel.isRuntimeActive {
                     Button("Disconnect") { viewModel.disconnectAll() }
                         .buttonStyle(.borderedProminent)

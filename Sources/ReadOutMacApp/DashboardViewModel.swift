@@ -90,6 +90,18 @@ final class DashboardViewModel: ObservableObject {
         isSettingsPresented = false
     }
 
+    func clearCharts() {
+        multimeterSamples.removeAll(keepingCapacity: true)
+        usbcSamples.removeAll(keepingCapacity: true)
+        statusMessage = "Charts cleared"
+    }
+
+    func resetVisualState() {
+        multimeterAlert = "OK"
+        multimeterAlertState = .none
+        statusMessage = "Visual state reset"
+    }
+
     func saveSettings() {
         let newConfig = configurationService.normalized(editableConfiguration, availablePorts: availablePorts)
         let validation = AppConfigurationValidator.validate(newConfig)
