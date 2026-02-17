@@ -57,6 +57,11 @@ swift run ReadOutFixtureTool validate-multimeter --input Tests/ReadOutCoreTests/
 swift run ReadOutFixtureTool validate-usbc --input Tests/ReadOutCoreTests/Fixtures/usbc_frame_fixtures.json
 ```
 
+### Run v1 readiness check
+```bash
+scripts/v1-readiness-check.sh --extended --seed 42
+```
+
 ## CI and Quality Gates
 
 Workflows:
@@ -78,13 +83,17 @@ Branch protection setup:
 - Parser contract: `docs/parser-compatibility.md`
 - Fixture format: `docs/fixture-format.md`
 - Capture/import runbook: `docs/fixture-capture-runbook.md`
+- Release gate checklist: `docs/v1-release-checklist.md`
 
 ## Roadmap (Open)
 
-- `#9`: first-run setup wizard with serial auto-detection (open, intentionally not started now)
-- `#8`: diagnostics bundle export (logs + config + runtime health)
-- `#10`: high-density chart mode (downsampling + range controls)
-- `#5`: alarm timeline markers and chart context overlays
+- `#9`: first-run setup wizard with serial auto-detection (open, intentionally deferred for now)
+- `#1`: v1 stabilization and production-readiness epic (final release validation + tagging)
+
+Completed recently:
+- `#5`: alarm timeline markers + hover details + snapshot coverage
+- `#10`: high-density chart mode + reconnect overlays + pipeline performance instrumentation
+- `#8`: diagnostics bundle export
 
 ## Repository
 
