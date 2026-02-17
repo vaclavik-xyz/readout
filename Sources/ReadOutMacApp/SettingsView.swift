@@ -147,6 +147,8 @@ struct SettingsView: View {
                             Text(layoutTitle(visibility)).tag(visibility)
                         }
                     }
+
+                    Toggle("Enable pop-out alarm emphasis", isOn: $configuration.popoutAlarmEmphasisEnabled)
                 }
 
                 validationSection

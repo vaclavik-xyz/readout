@@ -94,6 +94,7 @@ public struct AppConfiguration: Sendable, Equatable {
     public var usbcPopoutMode: PopoutDisplayMode = .detailed
     public var multimeterPopoutFrame: PopoutWindowFrame?
     public var usbcPopoutFrame: PopoutWindowFrame?
+    public var popoutAlarmEmphasisEnabled: Bool = false
 
     public init() {}
 
@@ -228,6 +229,7 @@ public struct AppConfiguration: Sendable, Equatable {
         config.usbcPopoutMode = popoutDisplayMode("usbc_popout_mode", default: config.usbcPopoutMode)
         config.multimeterPopoutFrame = popoutFrame(prefix: "multimeter_popout")
         config.usbcPopoutFrame = popoutFrame(prefix: "usbc_popout")
+        config.popoutAlarmEmphasisEnabled = bool("popout_alarm_emphasis_enabled", default: config.popoutAlarmEmphasisEnabled)
 
         // Legacy migrations from Python implementation.
         if config.multimeterPort.isEmpty {
@@ -300,6 +302,7 @@ public struct AppConfiguration: Sendable, Equatable {
             "pc_beep_sound_preset": pcBeepSoundPreset.rawValue,
             "multimeter_popout_mode": multimeterPopoutMode.rawValue,
             "usbc_popout_mode": usbcPopoutMode.rawValue,
+            "popout_alarm_emphasis_enabled": popoutAlarmEmphasisEnabled,
         ]
 
         if let frame = multimeterPopoutFrame {

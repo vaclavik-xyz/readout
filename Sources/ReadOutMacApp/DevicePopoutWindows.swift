@@ -189,8 +189,10 @@ private final class DevicePopoutWindowDelegate: NSObject, NSWindowDelegate {
 #endif
 
 private struct DevicePopoutView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let kind: DevicePopoutKind
     @ObservedObject var viewModel: DashboardViewModel
+    @State private var emphasisPulse = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -214,6 +216,22 @@ private struct DevicePopoutView: View {
             .padding(14 * scale)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(popoutBackground)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(
+                        emphasisBorderColor.opacity(isAlarmEmphasisVisible ? 0.95 : 0),
+                        lineWidth: isAlarmEmphasisVisible ? (isAlarmEmphasisAnimated && emphasisPulse ? 3 : 2) : 0
+                    )
+                    .animation(.easeInOut(duration: 0.22), value: isAlarmEmphasisVisible)
+            )
+            .shadow(
+                color: emphasisBorderColor.opacity(
+                    isAlarmEmphasisVisible
+                        ? (isAlarmEmphasisAnimated && emphasisPulse ? 0.35 : 0.15)
+                        : 0
+                ),
+                radius: isAlarmEmphasisVisible ? (isAlarmEmphasisAnimated && emphasisPulse ? 14 : 8) : 0
+            )
             .contextMenu {
                 Menu("Display Mode") {
                     ForEach(DevicePopoutDisplayMode.allCases) { mode in
@@ -229,6 +247,18 @@ private struct DevicePopoutView: View {
                     }
                 }
             }
+            .onAppear {
+                if isAlarmEmphasisAnimated {
+                    startAlarmEmphasisPulse()
+                }
+            }
+            .onChange(of: isAlarmEmphasisAnimated) { _, active in
+                if active {
+                    startAlarmEmphasisPulse()
+                } else {
+                    emphasisPulse = false
+                }
+            }
         }
     }
 
@@ -239,6 +269,46 @@ private struct DevicePopoutView: View {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(Color.primary.opacity(0.12), lineWidth: 1)
             )
+    }
+
+    private var isAlarmEmphasisVisible: Bool {
+        guard viewModel.configuration.popoutAlarmEmphasisEnabled else {
+            return false
+        }
+        guard kind == .multimeter else {
+            return false
+        }
+
+        switch viewModel.multimeterAlertState {
+        case .short, .highAlarm, .lowAlarm:
+            return true
+        case .none, .open:
+            return false
+        }
+    }
+
+    private var isAlarmEmphasisAnimated: Bool {
+        isAlarmEmphasisVisible && !reduceMotion
+    }
+
+    private var emphasisBorderColor: Color {
+        switch viewModel.multimeterAlertState {
+        case .short:
+            return .red
+        case .highAlarm:
+            return .orange
+        case .lowAlarm:
+            return .cyan
+        case .none, .open:
+            return .clear
+        }
+    }
+
+    private func startAlarmEmphasisPulse() {
+        emphasisPulse = false
+        withAnimation(.easeInOut(duration: 0.82).repeatForever(autoreverses: true)) {
+            emphasisPulse = true
+        }
     }
 
     private func popoutScale(for size: CGSize, kind: DevicePopoutKind) -> CGFloat {

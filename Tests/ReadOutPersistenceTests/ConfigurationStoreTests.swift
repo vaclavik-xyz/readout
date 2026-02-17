@@ -43,6 +43,7 @@ func saveAndLoadRoundTrip() async throws {
     config.usbcPopoutMode = .compact
     config.multimeterPopoutFrame = .init(x: 120, y: 160, width: 480, height: 260)
     config.usbcPopoutFrame = .init(x: 640, y: 200, width: 500, height: 280)
+    config.popoutAlarmEmphasisEnabled = true
 
     try await store.save(config)
     #expect(await store.hasPersistedConfiguration() == true)
