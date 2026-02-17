@@ -33,6 +33,48 @@ jobs:
           set -o pipefail
           swift test 2>&1 | tee .ci-logs/swift-test.log
 
+      - name: Fixture Schema Validation
+        run: |
+          set -o pipefail
+          swift run ReadOutFixtureTool validate-multimeter \
+            --input Tests/ReadOutCoreTests/Fixtures/multimeter_fixtures.json \
+            2>&1 | tee .ci-logs/fixture-validate-multimeter.log
+          swift run ReadOutFixtureTool validate-usbc \
+            --input Tests/ReadOutCoreTests/Fixtures/usbc_frame_fixtures.json \
+            2>&1 | tee .ci-logs/fixture-validate-usbc.log
+
+      - name: Parser Drift Guard
+        run: |
+          set -o pipefail
+          mkdir -p .ci-baseline
+
+          git fetch --no-tags --depth=1 origin main
+
+          if git show origin/main:Tests/ReadOutCoreTests/Fixtures/multimeter_fixtures.json > .ci-baseline/multimeter_fixtures.json 2>/dev/null; then
+            echo "Loaded baseline multimeter fixtures from origin/main."
+          else
+            cp Tests/ReadOutCoreTests/Fixtures/multimeter_fixtures.json .ci-baseline/multimeter_fixtures.json
+            echo "Baseline multimeter fixtures fallback to current branch."
+          fi
+
+          if git show origin/main:Tests/ReadOutCoreTests/Fixtures/usbc_frame_fixtures.json > .ci-baseline/usbc_frame_fixtures.json 2>/dev/null; then
+            echo "Loaded baseline USB-C fixtures from origin/main."
+          else
+            cp Tests/ReadOutCoreTests/Fixtures/usbc_frame_fixtures.json .ci-baseline/usbc_frame_fixtures.json
+            echo "Baseline USB-C fixtures fallback to current branch."
+          fi
+
+          swift run ReadOutFixtureTool drift-report \
+            --candidate-multimeter Tests/ReadOutCoreTests/Fixtures/multimeter_fixtures.json \
+            --candidate-usbc Tests/ReadOutCoreTests/Fixtures/usbc_frame_fixtures.json \
+            --baseline-multimeter .ci-baseline/multimeter_fixtures.json \
+            --baseline-usbc .ci-baseline/usbc_frame_fixtures.json \
+            --max-new-unknown-modes 0 \
+            --max-new-overload-tokens 1 \
+            --max-invalid-frame-ratio-delta 0.05 \
+            --output .ci-logs/parser-drift-report.json \
+            2>&1 | tee .ci-logs/parser-drift.log
+
       - name: Runtime Smoke (ReadOutSoak)
         run: |
           set -o pipefail

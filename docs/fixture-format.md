@@ -26,6 +26,13 @@ Schema:
 
 ## Workflow
 1. Capture real serial samples from devices.
-2. Append new fixture entries.
-3. Run `swift test`.
-4. If behavior change is intentional, update fixture expectations in the same commit.
+2. Convert captures to fixture JSON with `ReadOutFixtureTool`:
+   - `swift run ReadOutFixtureTool import-multimeter --input captures/multimeter.txt --output candidate/multimeter_fixtures.json`
+   - `swift run ReadOutFixtureTool import-usbc --input captures/usbc.txt --output candidate/usbc_frame_fixtures.json`
+3. Validate candidate fixtures:
+   - `swift run ReadOutFixtureTool validate-multimeter --input candidate/multimeter_fixtures.json`
+   - `swift run ReadOutFixtureTool validate-usbc --input candidate/usbc_frame_fixtures.json`
+4. Generate drift report against baseline fixtures:
+   - `swift run ReadOutFixtureTool drift-report --candidate-multimeter candidate/multimeter_fixtures.json --candidate-usbc candidate/usbc_frame_fixtures.json --baseline-multimeter Tests/ReadOutCoreTests/Fixtures/multimeter_fixtures.json --baseline-usbc Tests/ReadOutCoreTests/Fixtures/usbc_frame_fixtures.json --output candidate/parser_drift_report.json`
+5. Run `swift test`.
+6. If behavior change is intentional, update fixture expectations in the same commit.

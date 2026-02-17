@@ -61,6 +61,11 @@ Native macOS measurement app rewrite focused on speed, reliability, and clean UI
   - machine-readable JSON summary artifact with reconnect/error/fault counters
   - example:
     - `swift run ReadOutSoak --preset smoke --seed 42 --output /tmp/readout-soak.json`
+- fixture import + parser drift guard CLI is now available via `ReadOutFixtureTool`:
+  - import multimeter and USB-C captures into fixture JSON
+  - validate fixture schema before test runs
+  - generate parser drift report against baseline fixtures
+  - runbook: `docs/fixture-capture-runbook.md`
 
 ## Next Milestones
 1. Add real device capture fixtures (multimeter + USB-C) to expand compatibility matrix

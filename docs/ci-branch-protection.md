@@ -9,6 +9,7 @@ Set the following required status check in GitHub branch protection for `main`:
 This gate enforces:
 - `swift build`
 - `swift test`
+- fixture schema validation + parser drift guard
 - runtime smoke (`ReadOutSoak`)
 - app startup smoke (`ReadOutMacApp`)
 

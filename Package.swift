@@ -27,6 +27,10 @@ let package = Package(
         .executable(
             name: "ReadOutSoak",
             targets: ["ReadOutSoak"]
+        ),
+        .executable(
+            name: "ReadOutFixtureTool",
+            targets: ["ReadOutFixtureTool"]
         )
     ],
     targets: [
@@ -48,6 +52,10 @@ let package = Package(
         .executableTarget(
             name: "ReadOutSoak",
             dependencies: ["ReadOutIO"]
+        ),
+        .executableTarget(
+            name: "ReadOutFixtureTool",
+            dependencies: ["ReadOutCore"]
         ),
         .testTarget(
             name: "ReadOutCoreTests",
