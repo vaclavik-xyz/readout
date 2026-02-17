@@ -26,6 +26,9 @@ Native macOS measurement app rewrite focused on speed, reliability, and clean UI
   - connect / read loop
   - reconnect with backoff policy
   - explicit stop lifecycle
+- Measurement pipelines added in `ReadOutIO`:
+  - multimeter mode-cache + parser pipeline
+  - USB-C frame pipeline with energy accumulation/reset
 
 ## Next Milestones
 1. Add real serial transport implementation in `ReadOutIO`

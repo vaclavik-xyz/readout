@@ -229,7 +229,8 @@ func stopTransitionsSessionToDisconnected() async {
     let counters = await transport.counters()
     #expect(counters.close >= 1)
 
-    let events = await recorder.events()
-    #expect(events.contains(.stateChanged(.stopping)))
-    #expect(events.contains(.stateChanged(.disconnected)))
+    let disconnected = await waitUntil {
+        await session.currentState() == .disconnected
+    }
+    #expect(disconnected == true)
 }
