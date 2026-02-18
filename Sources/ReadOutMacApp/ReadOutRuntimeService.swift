@@ -165,6 +165,9 @@ actor ReadOutRuntime {
 
         await csvQueue.shutdown(flush: true)
         await obsQueue.shutdown(flush: true)
+        try? await csvLogger.flush()
+        await csvLogger.close()
+        try? await obsWriter.flush()
         onEvent(.multimeterStatus(.disconnected, nil))
     }
 
@@ -260,6 +263,9 @@ actor ReadOutRuntime {
 
         await csvQueue.shutdown(flush: true)
         await obsQueue.shutdown(flush: true)
+        try? await csvLogger.flush()
+        await csvLogger.close()
+        try? await obsWriter.flush()
         onEvent(.usbcStatus(.disconnected, nil))
     }
 

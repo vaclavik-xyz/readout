@@ -2,6 +2,16 @@ import Foundation
 import ReadOutCore
 
 public actor CsvLogger {
+    private var openHandle: FileHandle?
+    private var openPath: String?
+    private var headerWritten: Set<String> = []
+    private let isoFormatter = ISO8601DateFormatter()
+
+    private var pendingData = Data()
+    private let flushThreshold = 8192
+    private var rowsSinceSync = 0
+    private let syncEveryN = 60
+
     public init() {}
 
     public func logMultimeter(
@@ -47,32 +57,73 @@ public actor CsvLogger {
         )
     }
 
+    public func flush() throws {
+        guard !pendingData.isEmpty else { return }
+        guard let handle = openHandle else { return }
+        try handle.write(contentsOf: pendingData)
+        try handle.synchronize()
+        pendingData.removeAll(keepingCapacity: true)
+        rowsSinceSync = 0
+    }
+
+    public func close() {
+        try? flush()
+        try? openHandle?.close()
+        openHandle = nil
+        openPath = nil
+    }
+
     private func appendRow(to filePath: String, header: [String], row: [String]) throws {
+        try ensureHandle(for: filePath)
+
+        if !headerWritten.contains(filePath) {
+            let headerLine = header.map(escapeCSV).joined(separator: ",") + "\n"
+            if let data = headerLine.data(using: .utf8) {
+                pendingData.append(data)
+            }
+            headerWritten.insert(filePath)
+        }
+
+        let line = row.map(escapeCSV).joined(separator: ",") + "\n"
+        guard let data = line.data(using: .utf8) else {
+            throw CocoaError(.fileWriteInapplicableStringEncoding)
+        }
+        pendingData.append(data)
+        rowsSinceSync += 1
+
+        if pendingData.count >= flushThreshold || rowsSinceSync >= syncEveryN {
+            try flush()
+        }
+    }
+
+    private func ensureHandle(for filePath: String) throws {
+        if openPath == filePath, openHandle != nil {
+            return
+        }
+
+        // Close previous handle if switching files
+        close()
+
         let url = URL(fileURLWithPath: filePath)
         let fm = FileManager.default
         try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
 
-        let exists = fm.fileExists(atPath: filePath)
-        if !exists {
+        if !fm.fileExists(atPath: filePath) {
             fm.createFile(atPath: filePath, contents: nil)
-            try appendLine(header, to: url)
         }
-        try appendLine(row, to: url)
-    }
 
-    private func appendLine(_ fields: [String], to url: URL) throws {
         guard let handle = try? FileHandle(forWritingTo: url) else {
             throw CocoaError(.fileWriteUnknown)
         }
-        defer { try? handle.close() }
-
         try handle.seekToEnd()
-        let line = fields.map(escapeCSV).joined(separator: ",") + "\n"
-        guard let data = line.data(using: .utf8) else {
-            throw CocoaError(.fileWriteInapplicableStringEncoding)
+
+        // If file already has content, mark header as written
+        if try handle.offset() > 0 {
+            headerWritten.insert(filePath)
         }
-        try handle.write(contentsOf: data)
-        try handle.synchronize()
+
+        openHandle = handle
+        openPath = filePath
     }
 
     private func escapeCSV(_ field: String) -> String {
@@ -83,7 +134,7 @@ public actor CsvLogger {
     }
 
     private func isoTimestamp(_ date: Date) -> String {
-        ISO8601DateFormatter().string(from: date)
+        isoFormatter.string(from: date)
     }
 
     private func numberString(_ value: Double?) -> String {
@@ -93,6 +144,8 @@ public actor CsvLogger {
 }
 
 public actor ObsOutputWriter {
+    private var lastWrittenText: [String: String] = [:]
+
     public init() {}
 
     public func writeMultimeter(
@@ -151,9 +204,18 @@ public actor ObsOutputWriter {
         try writeText(output, to: filePath)
     }
 
+    public func flush() throws {
+        // Force write any pending values (no-op currently; all writes are immediate when value changes)
+    }
+
     private func writeText(_ text: String, to filePath: String) throws {
+        if lastWrittenText[filePath] == text {
+            return
+        }
+
         let url = URL(fileURLWithPath: filePath)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try text.write(to: url, atomically: true, encoding: .utf8)
+        lastWrittenText[filePath] = text
     }
 }
