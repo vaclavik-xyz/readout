@@ -77,6 +77,8 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var isSessionCaptureActive: Bool = false
     @Published private(set) var sessionCaptureEventCount: Int = 0
     @Published private(set) var isSessionReplayActive: Bool = false
+    @Published var isDebugInfoVisible: Bool = false
+    @Published var isChartInspectorEnabled: Bool = false
     @Published var deviceVisibility: DashboardDeviceVisibility = .both
     @Published var theme: DashboardTheme = .system
     @Published var isRuntimeLogPanelVisible: Bool = true
@@ -511,6 +513,14 @@ final class DashboardViewModel: ObservableObject {
         setStatusMessage("UI rendering resumed")
         refreshRuntimeHealthBadges()
         processCoalescedUIRefreshTick(force: true)
+    }
+
+    func toggleDebugInfoVisibility() {
+        isDebugInfoVisible.toggle()
+    }
+
+    func toggleChartInspector() {
+        isChartInspectorEnabled.toggle()
     }
 
     func popoutMode(for kind: DevicePopoutKind) -> DevicePopoutDisplayMode {
@@ -1607,9 +1617,9 @@ final class DashboardViewModel: ObservableObject {
     private func chartMaxPointsForCurrentRefreshMode(showingBothDevices: Bool) -> Int {
         switch uiRefreshMode {
         case .normal:
-            return showingBothDevices ? 280 : 320
+            return showingBothDevices ? 220 : 260
         case .highLoad:
-            return showingBothDevices ? 180 : 220
+            return showingBothDevices ? 160 : 190
         }
     }
 

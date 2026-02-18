@@ -34,7 +34,9 @@ struct ContentView: View {
                 VStack(spacing: 16) {
                 header
                 statusStrip
-                runtimeHealthStrip
+                if viewModel.isDebugInfoVisible {
+                    runtimeHealthStrip
+                }
                 cards
                 alarmHistoryStrip
                 charts
@@ -149,43 +151,44 @@ struct ContentView: View {
                 }
 
                 HStack(spacing: 8) {
-                    Menu("Alarm") {
-                        Button(viewModel.isAlarmAcknowledged ? "Clear Acknowledge" : "Acknowledge Active Alarm") {
-                            viewModel.toggleAlarmAcknowledge()
-                        }
-                        .disabled(!viewModel.hasActiveAlarm && !viewModel.isAlarmAcknowledged)
-
-                        Divider()
-
-                        ForEach(AlarmSilencePreset.allCases) { preset in
-                            Button(preset.title) {
-                                viewModel.silenceAlarms(using: preset)
-                            }
-                        }
-
-                        if viewModel.isAlarmSilenced {
-                            Divider()
-                            Button("Unsilence") {
-                                viewModel.clearAlarmSilence()
-                            }
-                        }
-                    }
-                    .menuStyle(.borderlessButton)
-
-                    Button(viewModel.isDashboardBeepEnabled ? "Beep On" : "Beep Off") {
-                        viewModel.toggleDashboardBeep()
-                    }
-                    .buttonStyle(.bordered)
-
-                    Button(viewModel.isRuntimeLogPanelVisible ? "Hide Logs" : "Show Logs") {
-                        viewModel.toggleRuntimeLogPanelVisibility()
-                    }
-                    .buttonStyle(.bordered)
-
                     Button("Settings") { viewModel.openSettings() }
                         .buttonStyle(.bordered)
 
                     Menu("More") {
+                        Menu("Runtime Controls") {
+                            Menu("Alarm") {
+                                Button(viewModel.isAlarmAcknowledged ? "Clear Acknowledge" : "Acknowledge Active Alarm") {
+                                    viewModel.toggleAlarmAcknowledge()
+                                }
+                                .disabled(!viewModel.hasActiveAlarm && !viewModel.isAlarmAcknowledged)
+
+                                Divider()
+
+                                ForEach(AlarmSilencePreset.allCases) { preset in
+                                    Button(preset.title) {
+                                        viewModel.silenceAlarms(using: preset)
+                                    }
+                                }
+
+                                if viewModel.isAlarmSilenced {
+                                    Divider()
+                                    Button("Unsilence") {
+                                        viewModel.clearAlarmSilence()
+                                    }
+                                }
+                            }
+
+                            Button(viewModel.isDashboardBeepEnabled ? "Beep On" : "Beep Off") {
+                                viewModel.toggleDashboardBeep()
+                            }
+
+                            Button(viewModel.isRuntimeLogPanelVisible ? "Hide Logs" : "Show Logs") {
+                                viewModel.toggleRuntimeLogPanelVisibility()
+                            }
+                        }
+
+                        Divider()
+
                         Button("Pop-out Multimeter") {
                             popoutManager.show(.multimeter, viewModel: viewModel)
                         }
@@ -269,20 +272,32 @@ struct ContentView: View {
                         Button("Export Logs") { exportLogs() }
                         Button("Export Diagnostics") { exportDiagnostics() }
                         Divider()
-                        Button(viewModel.isSessionCaptureActive ? "Stop Session Capture" : "Start Session Capture") {
-                            if viewModel.isSessionCaptureActive {
-                                viewModel.stopRuntimeSessionCapture()
-                            } else {
-                                viewModel.startRuntimeSessionCapture()
+                        Menu("Debug Tools") {
+                            Button(viewModel.isDebugInfoVisible ? "Hide Debug Info" : "Show Debug Info") {
+                                viewModel.toggleDebugInfoVisibility()
                             }
-                        }
-                        Button("Export Session Capture") { exportSessionCapture() }
-                            .disabled(viewModel.sessionCaptureEventCount == 0)
-                        Button(viewModel.isSessionReplayActive ? "Stop Session Replay" : "Replay Session Capture") {
-                            if viewModel.isSessionReplayActive {
-                                viewModel.stopRuntimeSessionReplay()
-                            } else {
-                                replaySessionCapture()
+
+                            Button(viewModel.isChartInspectorEnabled ? "Disable Chart Cursor" : "Enable Chart Cursor") {
+                                viewModel.toggleChartInspector()
+                            }
+
+                            Divider()
+
+                            Button(viewModel.isSessionCaptureActive ? "Stop Session Capture" : "Start Session Capture") {
+                                if viewModel.isSessionCaptureActive {
+                                    viewModel.stopRuntimeSessionCapture()
+                                } else {
+                                    viewModel.startRuntimeSessionCapture()
+                                }
+                            }
+                            Button("Export Session Capture") { exportSessionCapture() }
+                                .disabled(viewModel.sessionCaptureEventCount == 0)
+                            Button(viewModel.isSessionReplayActive ? "Stop Session Replay" : "Replay Session Capture") {
+                                if viewModel.isSessionReplayActive {
+                                    viewModel.stopRuntimeSessionReplay()
+                                } else {
+                                    replaySessionCapture()
+                                }
                             }
                         }
                     }
@@ -307,23 +322,25 @@ struct ContentView: View {
                 .font(.system(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(palette.tertiaryText)
 
-            Text(viewModel.uiRefreshRuntimeSummary)
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundStyle(palette.tertiaryText)
-                .lineLimit(1)
-
-            if viewModel.isSessionCaptureActive || viewModel.sessionCaptureEventCount > 0 {
-                Text("Capture: \(viewModel.sessionCaptureEventCount)")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(viewModel.isSessionCaptureActive ? .mint : palette.tertiaryText)
+            if viewModel.isDebugInfoVisible {
+                Text(viewModel.uiRefreshRuntimeSummary)
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(palette.tertiaryText)
                     .lineLimit(1)
-            }
 
-            if viewModel.isSessionReplayActive {
-                Text("Replay active")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.orange)
-                    .lineLimit(1)
+                if viewModel.isSessionCaptureActive || viewModel.sessionCaptureEventCount > 0 {
+                    Text("Capture: \(viewModel.sessionCaptureEventCount)")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(viewModel.isSessionCaptureActive ? .mint : palette.tertiaryText)
+                        .lineLimit(1)
+                }
+
+                if viewModel.isSessionReplayActive {
+                    Text("Replay active")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.orange)
+                        .lineLimit(1)
+                }
             }
 
             if viewModel.alarmControlSummary != "Live" {
@@ -445,16 +462,20 @@ struct ContentView: View {
 
                 Spacer()
 
-                Text("MM: \(viewModel.displayedMultimeterSamples.count) pts | USB-C: \(viewModel.displayedUsbCSamples.count) pts")
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(palette.tertiaryText)
+                if viewModel.isDebugInfoVisible {
+                    Text("MM: \(viewModel.displayedMultimeterSamples.count) pts | USB-C: \(viewModel.displayedUsbCSamples.count) pts")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(palette.tertiaryText)
+                }
             }
 
 #if DEBUG
-            Text(viewModel.chartPerformanceSummary)
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundStyle(palette.tertiaryText)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if viewModel.isDebugInfoVisible {
+                Text(viewModel.chartPerformanceSummary)
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(palette.tertiaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
 #endif
 
             switch viewModel.deviceVisibility {
@@ -548,7 +569,7 @@ struct ContentView: View {
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 6) {
-                    ForEach(viewModel.runtimeLogs.suffix(80)) { entry in
+                    ForEach(viewModel.runtimeLogs.suffix(40)) { entry in
                         HStack(alignment: .top, spacing: 8) {
                             Text(entry.timestamp, format: .dateTime.hour().minute().second())
                                 .font(.system(size: 11, weight: .medium, design: .monospaced))
@@ -649,7 +670,7 @@ struct ContentView: View {
                 .font(.system(size: 15, weight: .bold, design: .rounded))
                 .foregroundStyle(palette.primaryText)
 
-            Chart(samples) { sample in
+            let baseChart = Chart(samples) { sample in
                 LineMark(
                     x: .value("Time", sample.timestamp),
                     y: .value("Value", sample.value)
@@ -713,15 +734,21 @@ struct ContentView: View {
                 AxisMarks(position: .leading)
             }
             .chartXAxis(.hidden)
-            .chartXSelection(value: selectedTimestamp)
 
-            if let selectedTimestamp = selectedTimestamp.wrappedValue {
+            if viewModel.isChartInspectorEnabled {
+                baseChart
+                    .chartXSelection(value: selectedTimestamp)
+            } else {
+                baseChart
+            }
+
+            if viewModel.isChartInspectorEnabled, let selectedTimestamp = selectedTimestamp.wrappedValue {
                 chartSelectionDetails(
                     selectedTimestamp: selectedTimestamp,
                     markers: markers,
                     reconnectMarkers: reconnectMarkers
                 )
-            } else if !markers.isEmpty || !reconnectMarkers.isEmpty {
+            } else if viewModel.isChartInspectorEnabled, !markers.isEmpty || !reconnectMarkers.isEmpty {
                 Text("Hover or drag across the chart for marker details")
                     .font(.system(size: 10, weight: .medium, design: .rounded))
                     .foregroundStyle(palette.tertiaryText)
