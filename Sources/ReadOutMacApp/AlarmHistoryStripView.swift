@@ -11,7 +11,7 @@ struct AlarmHistoryStripView: View {
             EmptyView()
         } else {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+                HStack(spacing: DesignSystem.Spacing.sm) {
                     ForEach(markers.suffix(12)) { marker in
                         HStack(spacing: 6) {
                             Text(marker.timestamp, format: .dateTime.hour().minute().second())
@@ -20,14 +20,14 @@ struct AlarmHistoryStripView: View {
 
                             Text(DashboardUIHelpers.alarmMarkerLabel(marker.state))
                                 .font(.system(size: 10, weight: .black, design: .rounded))
-                                .foregroundStyle(.black.opacity(0.82))
+                                .foregroundStyle(.black.opacity(DesignSystem.Opacity.strong))
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 3)
                                 .background(DashboardUIHelpers.alarmMarkerColor(marker.state), in: Capsule())
                         }
-                        .padding(.horizontal, 8)
+                        .padding(.horizontal, DesignSystem.Spacing.sm)
                         .padding(.vertical, 6)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.sm, style: .continuous))
                     }
                 }
             }

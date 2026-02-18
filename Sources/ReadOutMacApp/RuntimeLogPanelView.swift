@@ -6,10 +6,10 @@ struct RuntimeLogPanelView: View {
     let palette: DashboardPalette
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             HStack {
                 Text("Runtime Log")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.system(size: DesignSystem.Spacing.md, weight: .bold, design: .rounded))
                     .foregroundStyle(palette.primaryText)
                 Spacer()
                 Text(isLogCaptureEnabled ? "capture:on" : "capture:warn+err")
@@ -23,7 +23,7 @@ struct RuntimeLogPanelView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 6) {
                     ForEach(logs.suffix(40)) { entry in
-                        HStack(alignment: .top, spacing: 8) {
+                        HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
                             Text(entry.timestamp, format: .dateTime.hour().minute().second())
                                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                                 .foregroundStyle(palette.tertiaryText)
@@ -45,7 +45,7 @@ struct RuntimeLogPanelView: View {
                 }
             }
         }
-        .padding(14)
+        .padding(DesignSystem.Spacing.md)
         .frame(maxWidth: .infinity, minHeight: 140, maxHeight: 180, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)

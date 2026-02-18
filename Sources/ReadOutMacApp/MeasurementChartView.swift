@@ -124,10 +124,10 @@ struct MeasurementChartView: View {
         .padding(16)
         .frame(maxWidth: .infinity, minHeight: 260)
         .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.xl, style: .continuous)
                 .fill(.ultraThinMaterial)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.xl, style: .continuous)
                         .stroke(palette.cardStrokeDefault, lineWidth: 1)
                 )
         )
@@ -151,7 +151,7 @@ struct MeasurementChartView: View {
             maxDistanceSeconds: maxDistance
         )
 
-        HStack(spacing: 8) {
+        HStack(spacing: DesignSystem.Spacing.sm) {
             Text(selectedTimestamp, format: .dateTime.hour().minute().second())
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.6))
@@ -175,7 +175,7 @@ struct MeasurementChartView: View {
             if nearestAlarm == nil, nearestConnection == nil {
                 Text("No marker near cursor")
                     .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(.white.opacity(DesignSystem.Opacity.medium))
             }
 
             Spacer(minLength: 0)

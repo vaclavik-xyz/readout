@@ -8,7 +8,7 @@ struct RuntimeHealthStripView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
                 ForEach(badges) { badge in
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                         HStack(spacing: 6) {
                             Circle()
                                 .fill(DashboardUIHelpers.runtimeHealthColor(badge.severity))
@@ -23,12 +23,12 @@ struct RuntimeHealthStripView: View {
                             .lineLimit(1)
                     }
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, DesignSystem.Spacing.sm)
                     .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.sm, style: .continuous)
                             .fill(.ultraThinMaterial)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.sm, style: .continuous)
                                     .stroke(DashboardUIHelpers.runtimeHealthColor(badge.severity).opacity(0.35), lineWidth: 1)
                             )
                     )

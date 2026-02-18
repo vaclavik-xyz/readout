@@ -14,10 +14,10 @@ struct DeviceCardView: View {
     var body: some View {
         let accent = DashboardUIHelpers.alertAccentColor(alertState, defaultColor: palette.cardStrokeDefault)
 
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             HStack {
                 Text(title)
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .font(.system(size: DesignSystem.Spacing.lg, weight: .bold, design: .rounded))
                     .foregroundStyle(palette.primaryText)
                 Spacer()
                 statusPill(status)
@@ -42,14 +42,14 @@ struct DeviceCardView: View {
             .font(.system(size: 12, weight: .medium, design: .rounded))
             .foregroundStyle(palette.secondaryText)
         }
-        .padding(18)
+        .padding(DesignSystem.Spacing.lg)
         .frame(maxWidth: .infinity, minHeight: 230, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.xl, style: .continuous)
                 .fill(.ultraThinMaterial)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(accent.opacity(0.9), lineWidth: 1.5)
+                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.xl, style: .continuous)
+                        .stroke(accent.opacity(DesignSystem.Opacity.full), lineWidth: 1.5)
                 )
         )
     }
@@ -74,8 +74,8 @@ struct DeviceCardView: View {
         Text(DashboardAlertService.text(for: alertState))
             .font(.system(size: 10, weight: .black, design: .rounded))
             .foregroundStyle(.black.opacity(0.85))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, DesignSystem.Spacing.sm)
+            .padding(.vertical, DesignSystem.Spacing.xs)
             .background(DashboardUIHelpers.alertAccentColor(alertState, defaultColor: palette.cardStrokeDefault), in: Capsule())
     }
 }

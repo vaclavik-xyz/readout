@@ -15,7 +15,7 @@ struct DashboardHeaderView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                 Text("readOut")
                     .font(.system(size: 32, weight: .heavy, design: .rounded))
                     .foregroundStyle(palette.primaryText)
@@ -25,8 +25,8 @@ struct DashboardHeaderView: View {
             }
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 8) {
-                HStack(spacing: 8) {
+            VStack(alignment: .trailing, spacing: DesignSystem.Spacing.sm) {
+                HStack(spacing: DesignSystem.Spacing.sm) {
                     Picker("", selection: Binding(
                         get: { viewModel.deviceVisibility },
                         set: { viewModel.setDeviceVisibility($0) }
@@ -56,7 +56,7 @@ struct DashboardHeaderView: View {
                     .disabled(viewModel.isRecoveryInProgress || (!viewModel.isRuntimeActive && !viewModel.canConnectAll))
                 }
 
-                HStack(spacing: 8) {
+                HStack(spacing: DesignSystem.Spacing.sm) {
                     Button("Settings") { viewModel.openSettings() }
                         .buttonStyle(.bordered)
 
@@ -65,11 +65,11 @@ struct DashboardHeaderView: View {
             }
         }
         .padding(16)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.lg, style: .continuous))
         .sheet(isPresented: $isSavePopoutProfilePresented) {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                 Text("Save Pop-out Layout")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .font(.system(size: DesignSystem.Spacing.lg, weight: .bold, design: .rounded))
                     .foregroundStyle(palette.primaryText)
                 Text("Name this layout profile for quick restore.")
                     .font(.system(size: 12, weight: .medium, design: .rounded))
@@ -90,7 +90,7 @@ struct DashboardHeaderView: View {
                     .buttonStyle(.borderedProminent)
                 }
             }
-            .padding(18)
+            .padding(DesignSystem.Spacing.lg)
             .frame(minWidth: 360)
         }
     }

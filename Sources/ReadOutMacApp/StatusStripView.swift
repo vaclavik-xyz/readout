@@ -60,14 +60,14 @@ struct StatusStripView: View {
                 .font(.system(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(palette.tertiaryText)
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, DesignSystem.Spacing.md)
         .padding(.vertical, 10)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.md, style: .continuous)
                 .fill(.ultraThinMaterial)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(.white.opacity(0.08), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.md, style: .continuous)
+                        .stroke(.white.opacity(DesignSystem.Opacity.faint), lineWidth: 1)
                 )
         )
     }
