@@ -47,14 +47,23 @@ final class DashboardViewModel: ObservableObject {
     @Published var usbcPower: String = "Power: ---"
     @Published var usbcEnergy: String = "Energy: --- mWh | --- mAh"
 
-    @Published var multimeterSamples: [ChartSample] = []
-    @Published var usbcSamples: [ChartSample] = []
-    @Published var alarmMarkers: [AlarmTimelineMarker] = []
-    @Published private(set) var displayedMultimeterSamples: [ChartSample] = []
-    @Published private(set) var displayedUsbCSamples: [ChartSample] = []
-    @Published private(set) var displayedAlarmMarkers: [AlarmTimelineMarker] = []
-    @Published private(set) var displayedMultimeterConnectionMarkers: [ConnectionOverlayMarker] = []
-    @Published private(set) var displayedUsbCConnectionMarkers: [ConnectionOverlayMarker] = []
+    var multimeterSamples: [ChartSample] {
+        get { chartDataService.multimeterSamples }
+        set { chartDataService.multimeterSamples = newValue }
+    }
+    var usbcSamples: [ChartSample] {
+        get { chartDataService.usbcSamples }
+        set { chartDataService.usbcSamples = newValue }
+    }
+    var alarmMarkers: [AlarmTimelineMarker] {
+        get { chartDataService.alarmMarkers }
+        set { chartDataService.alarmMarkers = newValue }
+    }
+    var displayedMultimeterSamples: [ChartSample] { chartDataService.displayedMultimeterSamples }
+    var displayedUsbCSamples: [ChartSample] { chartDataService.displayedUsbCSamples }
+    var displayedAlarmMarkers: [AlarmTimelineMarker] { chartDataService.displayedAlarmMarkers }
+    var displayedMultimeterConnectionMarkers: [ConnectionOverlayMarker] { chartDataService.displayedMultimeterConnectionMarkers }
+    var displayedUsbCConnectionMarkers: [ConnectionOverlayMarker] { chartDataService.displayedUsbCConnectionMarkers }
     @Published var selectedChartRange: ChartRangePreset = .twoMinutes {
         didSet {
             markChartRefresh(multimeter: true, usbc: true, markers: true, reason: "range_changed")
@@ -110,6 +119,7 @@ final class DashboardViewModel: ObservableObject {
         firstRunReason == "manual_from_settings"
     }
 
+    let chartDataService = ChartDataService()
     let popoutLayoutService = PopoutLayoutService()
     let alarmControlService = AlarmControlService(beepController: PcBeepController())
     private let configurationService = DashboardConfigurationService()
@@ -119,7 +129,6 @@ final class DashboardViewModel: ObservableObject {
     private var serviceCancellables: Set<AnyCancellable> = []
     private var recoveryTask: Task<Void, Never>?
     private var connectionTimeline: [ConnectionTimelineEntry] = []
-    private var chartConnectionTimeline: [ConnectionTimelineEntry] = []
     private var healthSnapshots: [RuntimeHealthSnapshot] = []
     private var reconnectCount = 0
     private var runtimeErrorCount = 0
@@ -150,29 +159,10 @@ final class DashboardViewModel: ObservableObject {
     private var lastUIRefreshAppliedHz: Double = 0
     private var lastUIRefreshSkippedHz: Double = 0
     private var outputQueueHealthByName: [String: OutputQueueHealthState] = [:]
-    private var multimeterChartDirty = true
-    private var usbCChartDirty = true
-    private var chartMarkersDirty = true
-    private var chartRefreshPending = true
-    private var pendingRefreshReasons: Set<String> = ["init"]
     private var appliedUIRefreshTicks = 0
     private var skippedUIRefreshTicks = 0
 #if DEBUG
     private var debugForcedUIRefreshProcessingMs: Double?
-#endif
-#if DEBUG
-    private var lastMultimeterPipelineMetric = ChartPipelineMetric(
-        sourcePointCount: 0,
-        filteredPointCount: 0,
-        renderedPointCount: 0,
-        processingMilliseconds: 0
-    )
-    private var lastUsbCPipelineMetric = ChartPipelineMetric(
-        sourcePointCount: 0,
-        filteredPointCount: 0,
-        renderedPointCount: 0,
-        processingMilliseconds: 0
-    )
 #endif
 
     private lazy var runtime = ReadOutRuntime { [weak self] event in
@@ -194,6 +184,9 @@ final class DashboardViewModel: ObservableObject {
         startUIRefreshLoop()
         processCoalescedUIRefreshTick(force: true)
 
+        chartDataService.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &serviceCancellables)
         popoutLayoutService.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &serviceCancellables)
@@ -407,15 +400,7 @@ final class DashboardViewModel: ObservableObject {
     }
 
     func clearCharts() {
-        multimeterSamples.removeAll(keepingCapacity: true)
-        usbcSamples.removeAll(keepingCapacity: true)
-        alarmMarkers.removeAll(keepingCapacity: true)
-        chartConnectionTimeline.removeAll(keepingCapacity: true)
-        multimeterChartDirty = true
-        usbCChartDirty = true
-        chartMarkersDirty = true
-        chartRefreshPending = true
-        pendingRefreshReasons.insert("charts_cleared")
+        chartDataService.clearCharts()
         processCoalescedUIRefreshTick(force: true)
         setStatusMessage("Charts cleared")
     }
@@ -977,15 +962,10 @@ final class DashboardViewModel: ObservableObject {
     }
 
     private func trimChartsIfNeeded() {
-        let maxSamples = max(20, configuration.graphHistorySeconds * max(1, configuration.sampleRateHz))
-
-        if multimeterSamples.count > maxSamples {
-            multimeterSamples.removeFirst(multimeterSamples.count - maxSamples)
-        }
-
-        if usbcSamples.count > maxSamples {
-            usbcSamples.removeFirst(usbcSamples.count - maxSamples)
-        }
+        chartDataService.trimChartsIfNeeded(
+            graphHistorySeconds: configuration.graphHistorySeconds,
+            sampleRateHz: configuration.sampleRateHz
+        )
     }
 
     private func runRecoverySequence() async {
@@ -1254,18 +1234,14 @@ final class DashboardViewModel: ObservableObject {
         markers: Bool = false,
         reason: String
     ) {
-        multimeterChartDirty = multimeterChartDirty || multimeter
-        usbCChartDirty = usbCChartDirty || usbc
-        chartMarkersDirty = chartMarkersDirty || markers
-        chartRefreshPending = true
-        pendingRefreshReasons.insert(reason)
+        chartDataService.markChartRefresh(multimeter: multimeter, usbc: usbc, markers: markers, reason: reason)
     }
 
     private func processCoalescedUIRefreshTick(force: Bool) {
         let now = Date()
         refreshAlarmControlState(now: now, emitStatusOnExpiry: true)
         let hasPendingPresentation = pendingMultimeterSnapshot != nil || pendingUsbCSnapshot != nil || !pendingRuntimeLogs.isEmpty
-        let hasPendingCharts = chartRefreshPending
+        let hasPendingCharts = chartDataService.chartRefreshPending
         let hasWork = force || hasPendingPresentation || hasPendingCharts
         guard hasWork else {
             recoverUIRefreshModeOnIdle()
@@ -1287,13 +1263,20 @@ final class DashboardViewModel: ObservableObject {
         flushPendingRuntimeLogsToUI()
 
         if hasPendingCharts || force {
-            let reason = pendingRefreshReasons.sorted().joined(separator: ",")
-            refreshDisplayedCharts(reason: reason.isEmpty ? "coalesced" : reason, force: force)
-            pendingRefreshReasons.removeAll(keepingCapacity: true)
-            chartRefreshPending = false
-            multimeterChartDirty = false
-            usbCChartDirty = false
-            chartMarkersDirty = false
+            let showMultimeter = deviceVisibility != .usbc
+            let showUsbC = deviceVisibility != .multimeter
+            let chartMaxPoints = chartMaxPointsForCurrentRefreshMode(
+                showingBothDevices: showMultimeter && showUsbC
+            )
+            let reason = chartDataService.refreshDisplayedCharts(
+                selectedChartRange: selectedChartRange,
+                deviceVisibility: deviceVisibility,
+                maxPoints: chartMaxPoints,
+                force: force
+            )
+#if DEBUG
+            refreshChartPerformanceSummary(reason: reason)
+#endif
         }
 
         let measuredMs = Double(DispatchTime.now().uptimeNanoseconds - tickStart) / 1_000_000
@@ -1330,85 +1313,20 @@ final class DashboardViewModel: ObservableObject {
         }
     }
 
-    private func refreshDisplayedCharts(reason: String, force: Bool) {
-        let now = Date()
-        let showMultimeter = deviceVisibility != .usbc
-        let showUsbC = deviceVisibility != .multimeter
-        let chartMaxPoints = chartMaxPointsForCurrentRefreshMode(
-            showingBothDevices: showMultimeter && showUsbC
-        )
-
-        if force || multimeterChartDirty {
-            if showMultimeter {
-                let multimeterPipeline = ChartPipelineService.process(
-                    samples: multimeterSamples,
-                    range: selectedChartRange,
-                    now: now,
-                    maxPoints: chartMaxPoints
-                )
-                displayedMultimeterSamples = multimeterPipeline.samples
 #if DEBUG
-                lastMultimeterPipelineMetric = multimeterPipeline.metric
-#endif
-            } else {
-                displayedMultimeterSamples = []
-#if DEBUG
-                lastMultimeterPipelineMetric = ChartPipelineMetric(
-                    sourcePointCount: multimeterSamples.count,
-                    filteredPointCount: 0,
-                    renderedPointCount: 0,
-                    processingMilliseconds: 0
-                )
-#endif
-            }
-        }
-
-        if force || usbCChartDirty {
-            if showUsbC {
-                let usbCPipeline = ChartPipelineService.process(
-                    samples: usbcSamples,
-                    range: selectedChartRange,
-                    now: now,
-                    maxPoints: chartMaxPoints
-                )
-                displayedUsbCSamples = usbCPipeline.samples
-#if DEBUG
-                lastUsbCPipelineMetric = usbCPipeline.metric
-#endif
-            } else {
-                displayedUsbCSamples = []
-#if DEBUG
-                lastUsbCPipelineMetric = ChartPipelineMetric(
-                    sourcePointCount: usbcSamples.count,
-                    filteredPointCount: 0,
-                    renderedPointCount: 0,
-                    processingMilliseconds: 0
-                )
-#endif
-            }
-        }
-
-        if force || chartMarkersDirty {
-            displayedAlarmMarkers = showMultimeter ? alarmMarkersForDisplay(now: now) : []
-            displayedMultimeterConnectionMarkers = showMultimeter
-                ? connectionMarkersForDisplay(device: "multimeter", now: now)
-                : []
-            displayedUsbCConnectionMarkers = showUsbC
-                ? connectionMarkersForDisplay(device: "usbc", now: now)
-                : []
-        }
-
-#if DEBUG
+    private func refreshChartPerformanceSummary(reason: String) {
+        let mm = chartDataService.lastMultimeterPipelineMetric
+        let usbc = chartDataService.lastUsbCPipelineMetric
         chartPerformanceSummary =
             "Pipeline \(reason) | mode \(uiRefreshMode.rawValue) @ \(activeUIRefreshCadenceHz)Hz | " +
-            "MM \(lastMultimeterPipelineMetric.sourcePointCount)→\(lastMultimeterPipelineMetric.filteredPointCount)" +
-            "→\(lastMultimeterPipelineMetric.renderedPointCount) (\(formatMilliseconds(lastMultimeterPipelineMetric.processingMilliseconds))ms) | " +
-            "USB-C \(lastUsbCPipelineMetric.sourcePointCount)→\(lastUsbCPipelineMetric.filteredPointCount)" +
-            "→\(lastUsbCPipelineMetric.renderedPointCount) (\(formatMilliseconds(lastUsbCPipelineMetric.processingMilliseconds))ms) | " +
+            "MM \(mm.sourcePointCount)→\(mm.filteredPointCount)" +
+            "→\(mm.renderedPointCount) (\(formatMilliseconds(mm.processingMilliseconds))ms) | " +
+            "USB-C \(usbc.sourcePointCount)→\(usbc.filteredPointCount)" +
+            "→\(usbc.renderedPointCount) (\(formatMilliseconds(usbc.processingMilliseconds))ms) | " +
             "tick \(formatMilliseconds(lastUIRefreshProcessingMs))/\(formatMilliseconds(smoothedUIRefreshProcessingMs))ms | " +
             "UI ticks \(appliedUIRefreshTicks) applied / \(skippedUIRefreshTicks) skipped | switches \(uiRefreshModeSwitchCount)"
-#endif
     }
+#endif
 
     private var activeUIRefreshCadenceHz: Int {
         switch uiRefreshMode {
@@ -1532,74 +1450,16 @@ final class DashboardViewModel: ObservableObject {
     }
 #endif
 
-    private func alarmMarkersForDisplay(now: Date) -> [AlarmTimelineMarker] {
-        guard let duration = selectedChartRange.durationSeconds else {
-            return alarmMarkers
-        }
-        let threshold = now.addingTimeInterval(-duration)
-        return alarmMarkers.filter { $0.timestamp >= threshold }
-    }
-
-    private func connectionMarkersForDisplay(device: String, now: Date) -> [ConnectionOverlayMarker] {
-        let baseEntries = chartConnectionTimeline.filter { $0.device == device }
-
-        let visibleEntries: [ConnectionTimelineEntry]
-        if let duration = selectedChartRange.durationSeconds {
-            let threshold = now.addingTimeInterval(-duration)
-            visibleEntries = baseEntries.filter { $0.timestamp >= threshold }
-        } else {
-            visibleEntries = baseEntries
-        }
-
-        return visibleEntries.compactMap { entry in
-            guard let state = connectionOverlayState(for: entry) else {
-                return nil
-            }
-
-            return ConnectionOverlayMarker(
-                timestamp: entry.timestamp,
-                state: state,
-                message: entry.message ?? state.rawValue
-            )
-        }
-    }
-
-    private func connectionOverlayState(for entry: ConnectionTimelineEntry) -> ConnectionOverlayState? {
-        let lowered = entry.message?.lowercased() ?? ""
-        if lowered.contains("retrying") {
-            return .reconnecting
-        }
-        if entry.state == .error {
-            return .error
-        }
-        if entry.state == .connected {
-            return .restored
-        }
-        return nil
-    }
-
     private func appendAlarmMarkerIfNeeded(
         previousAlert: MeasurementAlertState,
         currentAlert: MeasurementAlertState,
         timestamp: Date
     ) {
-        guard previousAlert != currentAlert else {
-            return
-        }
-        guard currentAlert != .none else {
-            return
-        }
-
-        alarmMarkers.append(
-            AlarmTimelineMarker(
-                timestamp: timestamp,
-                state: currentAlert,
-                message: DashboardAlertService.text(for: currentAlert)
-            )
+        chartDataService.appendAlarmMarkerIfNeeded(
+            previousAlert: previousAlert,
+            currentAlert: currentAlert,
+            timestamp: timestamp
         )
-        if alarmMarkers.count > 120 {
-            alarmMarkers.removeFirst(alarmMarkers.count - 120)
-        }
     }
 
     private func makeDiagnosticsBundleInput() -> DiagnosticsBundleInput {
@@ -1634,11 +1494,7 @@ final class DashboardViewModel: ObservableObject {
             connectionTimeline.removeFirst(connectionTimeline.count - 500)
         }
 
-        chartConnectionTimeline.append(entry)
-        if chartConnectionTimeline.count > 240 {
-            chartConnectionTimeline.removeFirst(chartConnectionTimeline.count - 240)
-        }
-
+        chartDataService.recordChartConnectionEvent(entry)
         markChartRefresh(markers: true, reason: "\(device)_status")
         appendHealthSnapshot(reason: "\(device)_status")
     }
