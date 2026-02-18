@@ -1,18 +1,12 @@
 import SwiftUI
 import Charts
 import ReadOutCore
-#if canImport(AppKit)
-import AppKit
-import UniformTypeIdentifiers
-#endif
 
 struct ContentView: View {
     @ObservedObject var viewModel: DashboardViewModel
     let popoutManager: DevicePopoutManager
     @State private var selectedMultimeterTimestamp: Date?
     @State private var selectedUsbCTimestamp: Date?
-    @State private var isSavePopoutProfilePresented: Bool = false
-    @State private var popoutProfileNameDraft: String = ""
 
     private var palette: DashboardPalette {
         DashboardThemePalette.palette(for: viewModel.theme)
@@ -32,16 +26,24 @@ struct ContentView: View {
 
             ScrollView(.vertical, showsIndicators: true) {
                 VStack(spacing: 16) {
-                header
-                statusStrip
+                DashboardHeaderView(viewModel: viewModel, palette: palette, popoutManager: popoutManager)
+                StatusStripView(viewModel: viewModel, palette: palette)
                 if viewModel.isDebugInfoVisible {
-                    runtimeHealthStrip
+                    RuntimeHealthStripView(badges: viewModel.runtimeHealthBadges, palette: palette)
                 }
                 cards
-                alarmHistoryStrip
+                AlarmHistoryStripView(
+                    markers: viewModel.displayedAlarmMarkers,
+                    deviceVisibility: viewModel.deviceVisibility,
+                    palette: palette
+                )
                 charts
                 if viewModel.isDebugInfoVisible && viewModel.isRuntimeLogPanelVisible {
-                    runtimeLogPanel
+                    RuntimeLogPanelView(
+                        logs: viewModel.runtimeLogs,
+                        isLogCaptureEnabled: viewModel.isRuntimeLogCaptureEnabled,
+                        palette: palette
+                    )
                 }
             }
                 .padding(20)
@@ -78,336 +80,6 @@ struct ContentView: View {
             )
             .frame(minWidth: 760, minHeight: 620)
         }
-        .sheet(isPresented: $isSavePopoutProfilePresented) {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Save Pop-out Layout")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundStyle(palette.primaryText)
-                Text("Name this layout profile for quick restore.")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundStyle(palette.secondaryText)
-
-                TextField("Layout name", text: $popoutProfileNameDraft)
-                    .textFieldStyle(.roundedBorder)
-
-                HStack {
-                    Spacer()
-                    Button("Cancel") {
-                        isSavePopoutProfilePresented = false
-                    }
-                    Button("Save") {
-                        viewModel.saveCurrentPopoutLayoutProfile(named: popoutProfileNameDraft)
-                        isSavePopoutProfilePresented = false
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-            }
-            .padding(18)
-            .frame(minWidth: 360)
-        }
-    }
-
-    private var header: some View {
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("readOut")
-                    .font(.system(size: 32, weight: .heavy, design: .rounded))
-                    .foregroundStyle(palette.primaryText)
-                Text("Realtime measurements for Multimeter + USB-C power meter")
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(palette.secondaryText)
-            }
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 8) {
-                HStack(spacing: 8) {
-                    Picker("", selection: Binding(
-                        get: { viewModel.deviceVisibility },
-                        set: { viewModel.setDeviceVisibility($0) }
-                    )) {
-                        ForEach(DashboardDeviceVisibility.allCases) { visibility in
-                            Text(visibility.title).tag(visibility)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 260)
-
-                    Button(viewModel.isRenderPaused ? "Resume UI" : "Pause UI") {
-                        viewModel.toggleRenderPause()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(viewModel.isRenderPaused ? .green : .yellow)
-
-                    Button(viewModel.isRuntimeActive ? "Disconnect" : "Connect") {
-                        if viewModel.isRuntimeActive {
-                            viewModel.disconnectAll()
-                        } else {
-                            viewModel.connectAll()
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(viewModel.isRuntimeActive ? .red : .blue)
-                    .disabled(viewModel.isRecoveryInProgress || (!viewModel.isRuntimeActive && !viewModel.canConnectAll))
-                }
-
-                HStack(spacing: 8) {
-                    Button("Settings") { viewModel.openSettings() }
-                        .buttonStyle(.bordered)
-
-                    Menu("More") {
-                        Menu("Runtime Controls") {
-                            Menu("Alarm") {
-                                Button(viewModel.isAlarmAcknowledged ? "Clear Acknowledge" : "Acknowledge Active Alarm") {
-                                    viewModel.toggleAlarmAcknowledge()
-                                }
-                                .disabled(!viewModel.hasActiveAlarm && !viewModel.isAlarmAcknowledged)
-
-                                Divider()
-
-                                ForEach(AlarmSilencePreset.allCases) { preset in
-                                    Button(preset.title) {
-                                        viewModel.silenceAlarms(using: preset)
-                                    }
-                                }
-
-                                if viewModel.isAlarmSilenced {
-                                    Divider()
-                                    Button("Unsilence") {
-                                        viewModel.clearAlarmSilence()
-                                    }
-                                }
-                            }
-
-                            Button(viewModel.isDashboardBeepEnabled ? "Beep On" : "Beep Off") {
-                                viewModel.toggleDashboardBeep()
-                            }
-
-                            Button(viewModel.isRuntimeLogPanelVisible ? "Hide Logs" : "Show Logs") {
-                                viewModel.toggleRuntimeLogPanelVisibility()
-                            }
-                        }
-
-                        Divider()
-
-                        Button("Pop-out Multimeter") {
-                            popoutManager.show(.multimeter, viewModel: viewModel)
-                        }
-                        Button("Pop-out USB-C") {
-                            popoutManager.show(.usbc, viewModel: viewModel)
-                        }
-                        Button("Close Multimeter Pop-out") {
-                            popoutManager.close(.multimeter)
-                        }
-                        Button("Close USB-C Pop-out") {
-                            popoutManager.close(.usbc)
-                        }
-                        Menu("Pop-out Layout Profiles") {
-                            Button("Save Current Layout...") {
-                                popoutProfileNameDraft = viewModel.suggestedPopoutLayoutProfileName()
-                                isSavePopoutProfilePresented = true
-                            }
-
-                            if viewModel.hasPopoutLayoutProfiles {
-                                Divider()
-                                ForEach(viewModel.popoutLayoutProfiles, id: \.name) { profile in
-                                    Button {
-                                        if viewModel.applyPopoutLayoutProfile(named: profile.name) {
-                                            popoutManager.syncOpenWindowsFromViewModel(viewModel)
-                                        }
-                                    } label: {
-                                        if viewModel.isActivePopoutLayoutProfile(profile.name) {
-                                            Label("Apply \(profile.name)", systemImage: "checkmark")
-                                        } else {
-                                            Text("Apply \(profile.name)")
-                                        }
-                                    }
-                                }
-                                Divider()
-                                Menu("Delete Profile") {
-                                    ForEach(viewModel.popoutLayoutProfiles, id: \.name) { profile in
-                                        Button("Delete \(profile.name)") {
-                                            viewModel.deletePopoutLayoutProfile(named: profile.name)
-                                        }
-                                    }
-                                }
-                            } else {
-                                Text("No saved profiles")
-                            }
-                        }
-                        Menu("Multimeter Pop-out Mode") {
-                            ForEach(DevicePopoutDisplayMode.allCases) { mode in
-                                Button {
-                                    viewModel.setPopoutMode(mode, for: .multimeter)
-                                } label: {
-                                    if mode == viewModel.multimeterPopoutMode {
-                                        Label(mode.title, systemImage: "checkmark")
-                                    } else {
-                                        Text(mode.title)
-                                    }
-                                }
-                            }
-                        }
-                        Menu("USB-C Pop-out Mode") {
-                            ForEach(DevicePopoutDisplayMode.allCases) { mode in
-                                Button {
-                                    viewModel.setPopoutMode(mode, for: .usbc)
-                                } label: {
-                                    if mode == viewModel.usbcPopoutMode {
-                                        Label(mode.title, systemImage: "checkmark")
-                                    } else {
-                                        Text(mode.title)
-                                    }
-                                }
-                            }
-                        }
-                        Divider()
-                        Button("Refresh Ports") { viewModel.refreshPorts() }
-                        Button("Restart Runtime") { viewModel.restartRuntime() }
-                            .disabled(viewModel.isRecoveryInProgress)
-                        Divider()
-                        Button("Clear Charts") { viewModel.clearCharts() }
-                        Button("Reset Alert") { viewModel.resetVisualState() }
-                        Button("Clear Logs") { viewModel.clearRuntimeLogs() }
-                        Divider()
-                        Button("Export Logs") { exportLogs() }
-                        Button("Export Diagnostics") { exportDiagnostics() }
-                        Divider()
-                        Menu("Debug Tools") {
-                            Button(viewModel.isDebugInfoVisible ? "Hide Debug Info" : "Show Debug Info") {
-                                viewModel.toggleDebugInfoVisibility()
-                            }
-
-                            Button(viewModel.isChartInspectorEnabled ? "Disable Chart Cursor" : "Enable Chart Cursor") {
-                                viewModel.toggleChartInspector()
-                            }
-
-                            Divider()
-
-                            Button(viewModel.isSessionCaptureActive ? "Stop Session Capture" : "Start Session Capture") {
-                                if viewModel.isSessionCaptureActive {
-                                    viewModel.stopRuntimeSessionCapture()
-                                } else {
-                                    viewModel.startRuntimeSessionCapture()
-                                }
-                            }
-                            Button("Export Session Capture") { exportSessionCapture() }
-                                .disabled(viewModel.sessionCaptureEventCount == 0)
-                            Button(viewModel.isSessionReplayActive ? "Stop Session Replay" : "Replay Session Capture") {
-                                if viewModel.isSessionReplayActive {
-                                    viewModel.stopRuntimeSessionReplay()
-                                } else {
-                                    replaySessionCapture()
-                                }
-                            }
-                        }
-                    }
-                    .menuStyle(.borderlessButton)
-                }
-            }
-        }
-        .padding(16)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-
-    private var statusStrip: some View {
-        HStack(spacing: 10) {
-            Label(viewModel.statusMessage, systemImage: "waveform.path.ecg")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(palette.secondaryText)
-                .lineLimit(1)
-
-            Spacer()
-
-            Text(viewModel.configuration.useSimulator ? "Mode: Simulator" : "Mode: Hardware")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(palette.tertiaryText)
-
-            Text("UI: \(viewModel.uiRefreshActualHzText)")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundStyle(palette.tertiaryText)
-                .lineLimit(1)
-
-            if viewModel.isDebugInfoVisible {
-                Text(viewModel.uiRefreshRuntimeSummary)
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .foregroundStyle(palette.tertiaryText)
-                    .lineLimit(1)
-
-                if viewModel.isSessionCaptureActive || viewModel.sessionCaptureEventCount > 0 {
-                    Text("Capture: \(viewModel.sessionCaptureEventCount)")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundStyle(viewModel.isSessionCaptureActive ? .mint : palette.tertiaryText)
-                        .lineLimit(1)
-                }
-
-                if viewModel.isSessionReplayActive {
-                    Text("Replay active")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.orange)
-                        .lineLimit(1)
-                }
-            }
-
-            if viewModel.alarmControlSummary != "Live" {
-                Text("Alarm: \(viewModel.alarmControlSummary)")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(viewModel.isAlarmSilenced ? .yellow : .mint)
-                    .lineLimit(1)
-            }
-
-            if viewModel.isRenderPaused {
-                Text("UI Paused")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(.yellow)
-            }
-
-            Text("Ports: \(viewModel.availablePorts.count)")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(palette.tertiaryText)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(.white.opacity(0.08), lineWidth: 1)
-                )
-        )
-    }
-
-    private var runtimeHealthStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(viewModel.runtimeHealthBadges) { badge in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(runtimeHealthColor(badge.severity))
-                                .frame(width: 8, height: 8)
-                            Text(badge.title)
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .foregroundStyle(palette.secondaryText)
-                        }
-                        Text(badge.value)
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
-                            .foregroundStyle(palette.tertiaryText)
-                            .lineLimit(1)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .stroke(runtimeHealthColor(badge.severity).opacity(0.35), lineWidth: 1)
-                            )
-                    )
-                }
-            }
-        }
     }
 
     private var cards: some View {
@@ -427,26 +99,28 @@ struct ContentView: View {
     }
 
     private var multimeterCard: some View {
-        deviceCard(
+        DeviceCardView(
             title: "Multimeter",
             status: viewModel.multimeterStatus,
             primary: viewModel.multimeterPrimary,
             secondary: viewModel.multimeterSecondary,
             footerLeft: viewModel.multimeterMode,
             footerRight: "Alert: \(viewModel.multimeterAlert)",
-            alertState: viewModel.multimeterAlertState
+            alertState: viewModel.multimeterAlertState,
+            palette: palette
         )
     }
 
     private var usbCCard: some View {
-        deviceCard(
+        DeviceCardView(
             title: "USB-C Meter",
             status: viewModel.usbcStatus,
             primary: viewModel.usbcVoltage,
             secondary: viewModel.usbcCurrent,
             footerLeft: viewModel.usbcPower,
             footerRight: viewModel.usbcEnergy,
-            alertState: nil
+            alertState: nil,
+            palette: palette
         )
     }
 
@@ -498,7 +172,7 @@ struct ContentView: View {
     }
 
     private var multimeterChart: some View {
-        chartCard(
+        MeasurementChartView(
             title: "Multimeter Trend",
             color: palette.chartMultimeter,
             samples: viewModel.displayedMultimeterSamples,
@@ -510,12 +184,16 @@ struct ContentView: View {
                 : nil,
             lowThreshold: viewModel.configuration.dcvLowAlarmEnabled
                 ? viewModel.configuration.dcvLowAlarmValue
-                : nil
+                : nil,
+            isHighLoad: viewModel.isUIRefreshHighLoad,
+            isChartInspectorEnabled: viewModel.isChartInspectorEnabled,
+            selectedChartRange: viewModel.selectedChartRange,
+            palette: palette
         )
     }
 
     private var usbCChart: some View {
-        chartCard(
+        MeasurementChartView(
             title: "USB-C Power Trend",
             color: palette.chartUsbC,
             samples: viewModel.displayedUsbCSamples,
@@ -523,522 +201,11 @@ struct ContentView: View {
             reconnectMarkers: viewModel.displayedUsbCConnectionMarkers,
             selectedTimestamp: $selectedUsbCTimestamp,
             highThreshold: nil,
-            lowThreshold: nil
+            lowThreshold: nil,
+            isHighLoad: viewModel.isUIRefreshHighLoad,
+            isChartInspectorEnabled: viewModel.isChartInspectorEnabled,
+            selectedChartRange: viewModel.selectedChartRange,
+            palette: palette
         )
-    }
-
-    private var alarmHistoryStrip: some View {
-        Group {
-            if viewModel.deviceVisibility == .usbc || viewModel.displayedAlarmMarkers.isEmpty {
-                EmptyView()
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(viewModel.displayedAlarmMarkers.suffix(12)) { marker in
-                            HStack(spacing: 6) {
-                                Text(marker.timestamp, format: .dateTime.hour().minute().second())
-                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                    .foregroundStyle(.white.opacity(0.6))
-
-                                Text(alarmMarkerLabel(marker.state))
-                                    .font(.system(size: 10, weight: .black, design: .rounded))
-                                    .foregroundStyle(.black.opacity(0.82))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 3)
-                                    .background(alarmMarkerColor(marker.state), in: Capsule())
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 6)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var runtimeLogPanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Runtime Log")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundStyle(palette.primaryText)
-                Spacer()
-                Text(viewModel.isRuntimeLogCaptureEnabled ? "capture:on" : "capture:warn+err")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(viewModel.isRuntimeLogCaptureEnabled ? .mint : .yellow)
-                Text("\(viewModel.runtimeLogs.count) entries")
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(palette.tertiaryText)
-            }
-
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 6) {
-                    ForEach(viewModel.runtimeLogs.suffix(40)) { entry in
-                        HStack(alignment: .top, spacing: 8) {
-                            Text(entry.timestamp, format: .dateTime.hour().minute().second())
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundStyle(palette.tertiaryText)
-
-                            Text(entry.level.rawValue)
-                                .font(.system(size: 10, weight: .black, design: .rounded))
-                                .foregroundStyle(.black.opacity(0.85))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(logLevelColor(entry.level), in: Capsule())
-
-                            Text(entry.message)
-                                .font(.system(size: 11, weight: .medium, design: .rounded))
-                                .foregroundStyle(palette.secondaryText)
-
-                            Spacer(minLength: 0)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, minHeight: 140, maxHeight: 180, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(.white.opacity(0.12), lineWidth: 1)
-                )
-        )
-    }
-
-    private func deviceCard(
-        title: String,
-        status: DeviceUIState,
-        primary: String,
-        secondary: String,
-        footerLeft: String,
-        footerRight: String,
-        alertState: MeasurementAlertState?
-    ) -> some View {
-        let accent = alertAccentColor(alertState)
-
-        return VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text(title)
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundStyle(palette.primaryText)
-                Spacer()
-                statusPill(status)
-                if let alertState, alertState != .none {
-                    alertPill(alertState)
-                }
-            }
-            Text(primary)
-                .font(.system(size: 44, weight: .black, design: .rounded))
-                .foregroundStyle(palette.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.65)
-            Text(secondary)
-                .font(.system(size: 20, weight: .semibold, design: .rounded))
-                .foregroundStyle(palette.secondaryText)
-            Divider().overlay(palette.divider)
-            HStack {
-                Text(footerLeft)
-                Spacer()
-                Text(footerRight)
-            }
-            .font(.system(size: 12, weight: .medium, design: .rounded))
-            .foregroundStyle(palette.secondaryText)
-        }
-        .padding(18)
-        .frame(maxWidth: .infinity, minHeight: 230, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(accent.opacity(0.9), lineWidth: 1.5)
-                )
-        )
-    }
-
-    private func chartCard(
-        title: String,
-        color: Color,
-        samples: [ChartSample],
-        markers: [AlarmTimelineMarker],
-        reconnectMarkers: [ConnectionOverlayMarker],
-        selectedTimestamp: Binding<Date?>,
-        highThreshold: Double?,
-        lowThreshold: Double?
-    ) -> some View {
-        let showHeavyChartOverlays = !viewModel.isUIRefreshHighLoad
-        let maxVisibleMarkers = viewModel.isUIRefreshHighLoad ? 6 : 20
-        let showAnnotationLabels = !viewModel.isUIRefreshHighLoad
-
-        // Pre-compute gradient outside Chart closure to avoid per-sample allocation
-        let areaGradient = LinearGradient(
-            colors: [color.opacity(0.35), color.opacity(0.05)],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-
-        // Pre-compute marker metadata to avoid helper calls inside Chart closure
-        let visibleAlarmMarkers = Array(markers.suffix(maxVisibleMarkers))
-        let visibleReconnectMarkers = Array(reconnectMarkers.suffix(maxVisibleMarkers))
-
-        return VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.system(size: 15, weight: .bold, design: .rounded))
-                .foregroundStyle(palette.primaryText)
-
-            let baseChart = Chart(samples) { sample in
-                LineMark(
-                    x: .value("Time", sample.timestamp),
-                    y: .value("Value", sample.value)
-                )
-                .interpolationMethod(.catmullRom)
-                .foregroundStyle(color)
-                .lineStyle(
-                    StrokeStyle(
-                        lineWidth: showHeavyChartOverlays ? 2.5 : 2.0,
-                        lineCap: .round,
-                        lineJoin: .round
-                    )
-                )
-
-                if showHeavyChartOverlays {
-                    AreaMark(
-                        x: .value("Time", sample.timestamp),
-                        y: .value("Value", sample.value)
-                    )
-                    .interpolationMethod(.catmullRom)
-                    .foregroundStyle(areaGradient)
-                }
-
-                if let highThreshold {
-                    RuleMark(y: .value("High Alarm", highThreshold))
-                        .foregroundStyle(.red.opacity(0.8))
-                        .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [6, 4]))
-                }
-
-                if let lowThreshold {
-                    RuleMark(y: .value("Low Alarm", lowThreshold))
-                        .foregroundStyle(.yellow.opacity(0.8))
-                        .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [6, 4]))
-                }
-
-                ForEach(visibleAlarmMarkers) { marker in
-                    RuleMark(x: .value("Alarm", marker.timestamp))
-                        .foregroundStyle(alarmMarkerColor(marker.state).opacity(0.9))
-                        .lineStyle(StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
-                        .annotation(position: .top, alignment: .leading) {
-                            if showAnnotationLabels && visibleAlarmMarkers.count <= 8 {
-                                Text(alarmMarkerLabel(marker.state))
-                                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                                    .foregroundStyle(alarmMarkerColor(marker.state))
-                            }
-                        }
-                }
-
-                ForEach(visibleReconnectMarkers) { marker in
-                    RuleMark(x: .value("Connection Event", marker.timestamp))
-                        .foregroundStyle(connectionOverlayColor(marker.state).opacity(0.85))
-                        .lineStyle(StrokeStyle(lineWidth: 1.0, dash: [2, 4]))
-                        .annotation(position: .top, alignment: .trailing) {
-                            if showAnnotationLabels && visibleReconnectMarkers.count <= 8 {
-                                Text(connectionOverlayLabel(marker.state))
-                                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                                    .foregroundStyle(connectionOverlayColor(marker.state))
-                            }
-                        }
-                }
-            }
-            .chartYAxis {
-                AxisMarks(position: .leading)
-            }
-            .chartXAxis(.hidden)
-
-            if viewModel.isChartInspectorEnabled {
-                baseChart
-                    .chartXSelection(value: selectedTimestamp)
-            } else {
-                baseChart
-            }
-
-            if viewModel.isChartInspectorEnabled, let selectedTimestamp = selectedTimestamp.wrappedValue {
-                chartSelectionDetails(
-                    selectedTimestamp: selectedTimestamp,
-                    markers: markers,
-                    reconnectMarkers: reconnectMarkers
-                )
-            } else if viewModel.isChartInspectorEnabled, !markers.isEmpty || !reconnectMarkers.isEmpty {
-                Text("Hover or drag across the chart for marker details")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(palette.tertiaryText)
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, minHeight: 260)
-        .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(palette.cardStrokeDefault, lineWidth: 1)
-                )
-        )
-    }
-
-    @ViewBuilder
-    private func chartSelectionDetails(
-        selectedTimestamp: Date,
-        markers: [AlarmTimelineMarker],
-        reconnectMarkers: [ConnectionOverlayMarker]
-    ) -> some View {
-        let maxDistance = selectionDistanceSeconds()
-        let nearestAlarm = ChartMarkerSelectionService.nearestAlarmMarker(
-            to: selectedTimestamp,
-            markers: markers,
-            maxDistanceSeconds: maxDistance
-        )
-        let nearestConnection = ChartMarkerSelectionService.nearestConnectionMarker(
-            to: selectedTimestamp,
-            markers: reconnectMarkers,
-            maxDistanceSeconds: maxDistance
-        )
-
-        HStack(spacing: 8) {
-            Text(selectedTimestamp, format: .dateTime.hour().minute().second())
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.6))
-
-            if let nearestAlarm {
-                markerBadge(
-                    title: alarmMarkerLabel(nearestAlarm.state),
-                    detail: nearestAlarm.message,
-                    color: alarmMarkerColor(nearestAlarm.state)
-                )
-            }
-
-            if let nearestConnection {
-                markerBadge(
-                    title: connectionOverlayLabel(nearestConnection.state),
-                    detail: nearestConnection.message,
-                    color: connectionOverlayColor(nearestConnection.state)
-                )
-            }
-
-            if nearestAlarm == nil, nearestConnection == nil {
-                Text("No marker near cursor")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.5))
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.top, 2)
-    }
-
-    private func markerBadge(title: String, detail: String, color: Color) -> some View {
-        HStack(spacing: 5) {
-            Text(title)
-                .font(.system(size: 9, weight: .black, design: .rounded))
-                .foregroundStyle(.black.opacity(0.85))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(color, in: Capsule())
-
-            Text(detail)
-                .font(.system(size: 9, weight: .medium, design: .rounded))
-                .foregroundStyle(.white.opacity(0.7))
-                .lineLimit(1)
-        }
-    }
-
-    private func selectionDistanceSeconds() -> TimeInterval {
-        switch viewModel.selectedChartRange {
-        case .thirtySeconds:
-            return 2.5
-        case .twoMinutes:
-            return 8
-        case .tenMinutes:
-            return 20
-        case .full:
-            return 60
-        }
-    }
-
-    private func exportLogs() {
-        #if canImport(AppKit)
-        let panel = NSSavePanel()
-        panel.title = "Export Runtime Logs"
-        panel.nameFieldStringValue = "readout-runtime.log"
-        let logType = UTType(filenameExtension: "log") ?? .plainText
-        panel.allowedContentTypes = [logType, .plainText]
-        panel.canCreateDirectories = true
-
-        if panel.runModal() == .OK, let url = panel.url {
-            viewModel.exportRuntimeLogs(to: url)
-        }
-        #endif
-    }
-
-    private func exportDiagnostics() {
-        #if canImport(AppKit)
-        let panel = NSSavePanel()
-        panel.title = "Export Diagnostics Bundle"
-        panel.nameFieldStringValue = "readout-diagnostics.zip"
-        panel.allowedContentTypes = [.zip]
-        panel.canCreateDirectories = true
-
-        if panel.runModal() == .OK, let url = panel.url {
-            viewModel.exportDiagnosticsBundle(to: url)
-        }
-        #endif
-    }
-
-    private func exportSessionCapture() {
-        #if canImport(AppKit)
-        let panel = NSSavePanel()
-        panel.title = "Export Session Capture"
-        panel.nameFieldStringValue = "readout-session-capture.json"
-        panel.allowedContentTypes = [.json]
-        panel.canCreateDirectories = true
-
-        if panel.runModal() == .OK, let url = panel.url {
-            viewModel.exportRuntimeSessionCapture(to: url)
-        }
-        #endif
-    }
-
-    private func replaySessionCapture() {
-        #if canImport(AppKit)
-        let panel = NSOpenPanel()
-        panel.title = "Replay Session Capture"
-        panel.allowedContentTypes = [.json]
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-
-        if panel.runModal() == .OK, let url = panel.url {
-            viewModel.replayRuntimeSession(from: url)
-        }
-        #endif
-    }
-
-    private func statusPill(_ status: DeviceUIState) -> some View {
-        let color: Color = switch status {
-        case .connected: .green
-        case .connecting: .yellow
-        case .error: .red
-        case .disconnected: .gray
-        }
-
-        return Text(status.rawValue.capitalized)
-            .font(.system(size: 11, weight: .bold, design: .rounded))
-            .foregroundStyle(.black.opacity(0.8))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(color, in: Capsule())
-    }
-
-    private func alertAccentColor(_ alertState: MeasurementAlertState?) -> Color {
-        guard let alertState else {
-            return palette.cardStrokeDefault
-        }
-
-        switch alertState {
-        case .none:
-            return palette.cardStrokeDefault
-        case .short:
-            return .orange
-        case .open:
-            return .pink
-        case .highAlarm:
-            return .red
-        case .lowAlarm:
-            return .yellow
-        }
-    }
-
-    private func alertPill(_ alertState: MeasurementAlertState) -> some View {
-        Text(DashboardAlertService.text(for: alertState))
-            .font(.system(size: 10, weight: .black, design: .rounded))
-            .foregroundStyle(.black.opacity(0.85))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(alertAccentColor(alertState), in: Capsule())
-    }
-
-    private func logLevelColor(_ level: RuntimeLogLevel) -> Color {
-        switch level {
-        case .info:
-            return .mint
-        case .warning:
-            return .yellow
-        case .error:
-            return .red
-        }
-    }
-
-    private func runtimeHealthColor(_ severity: RuntimeHealthSeverity) -> Color {
-        switch severity {
-        case .good:
-            return .mint
-        case .warning:
-            return .yellow
-        case .critical:
-            return .red
-        }
-    }
-
-    private func alarmMarkerLabel(_ state: MeasurementAlertState) -> String {
-        switch state {
-        case .none:
-            return "NONE"
-        case .short:
-            return "SHORT"
-        case .open:
-            return "OPEN"
-        case .highAlarm:
-            return "HIGH"
-        case .lowAlarm:
-            return "LOW"
-        }
-    }
-
-    private func alarmMarkerColor(_ state: MeasurementAlertState) -> Color {
-        switch state {
-        case .none:
-            return .gray
-        case .short:
-            return .orange
-        case .open:
-            return .pink
-        case .highAlarm:
-            return .red
-        case .lowAlarm:
-            return .yellow
-        }
-    }
-
-    private func connectionOverlayLabel(_ state: ConnectionOverlayState) -> String {
-        switch state {
-        case .reconnecting:
-            return "RETRY"
-        case .error:
-            return "ERROR"
-        case .restored:
-            return "RESTORED"
-        }
-    }
-
-    private func connectionOverlayColor(_ state: ConnectionOverlayState) -> Color {
-        switch state {
-        case .reconnecting:
-            return .cyan
-        case .error:
-            return .red
-        case .restored:
-            return .green
-        }
     }
 }
