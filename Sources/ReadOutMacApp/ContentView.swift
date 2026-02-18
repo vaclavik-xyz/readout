@@ -671,7 +671,19 @@ struct ContentView: View {
         lowThreshold: Double?
     ) -> some View {
         let showHeavyChartOverlays = !viewModel.isUIRefreshHighLoad
-        let showConnectionAndAlarmOverlays = showHeavyChartOverlays || viewModel.isDebugInfoVisible
+        let maxVisibleMarkers = viewModel.isUIRefreshHighLoad ? 6 : 20
+        let showAnnotationLabels = !viewModel.isUIRefreshHighLoad
+
+        // Pre-compute gradient outside Chart closure to avoid per-sample allocation
+        let areaGradient = LinearGradient(
+            colors: [color.opacity(0.35), color.opacity(0.05)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+
+        // Pre-compute marker metadata to avoid helper calls inside Chart closure
+        let visibleAlarmMarkers = Array(markers.suffix(maxVisibleMarkers))
+        let visibleReconnectMarkers = Array(reconnectMarkers.suffix(maxVisibleMarkers))
 
         return VStack(alignment: .leading, spacing: 10) {
             Text(title)
@@ -699,13 +711,7 @@ struct ContentView: View {
                         y: .value("Value", sample.value)
                     )
                     .interpolationMethod(.catmullRom)
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [color.opacity(0.35), color.opacity(0.05)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                        )
-                    )
+                    .foregroundStyle(areaGradient)
                 }
 
                 if let highThreshold {
@@ -720,32 +726,30 @@ struct ContentView: View {
                         .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [6, 4]))
                 }
 
-                if showConnectionAndAlarmOverlays {
-                    ForEach(markers) { marker in
-                        RuleMark(x: .value("Alarm", marker.timestamp))
-                            .foregroundStyle(alarmMarkerColor(marker.state).opacity(0.9))
-                            .lineStyle(StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
-                            .annotation(position: .top, alignment: .leading) {
-                                if markers.count <= 8 {
-                                    Text(alarmMarkerLabel(marker.state))
-                                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                                        .foregroundStyle(alarmMarkerColor(marker.state))
-                                }
+                ForEach(visibleAlarmMarkers) { marker in
+                    RuleMark(x: .value("Alarm", marker.timestamp))
+                        .foregroundStyle(alarmMarkerColor(marker.state).opacity(0.9))
+                        .lineStyle(StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
+                        .annotation(position: .top, alignment: .leading) {
+                            if showAnnotationLabels && visibleAlarmMarkers.count <= 8 {
+                                Text(alarmMarkerLabel(marker.state))
+                                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                                    .foregroundStyle(alarmMarkerColor(marker.state))
                             }
-                    }
+                        }
+                }
 
-                    ForEach(reconnectMarkers) { marker in
-                        RuleMark(x: .value("Connection Event", marker.timestamp))
-                            .foregroundStyle(connectionOverlayColor(marker.state).opacity(0.85))
-                            .lineStyle(StrokeStyle(lineWidth: 1.0, dash: [2, 4]))
-                            .annotation(position: .top, alignment: .trailing) {
-                                if reconnectMarkers.count <= 8 {
-                                    Text(connectionOverlayLabel(marker.state))
-                                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                                        .foregroundStyle(connectionOverlayColor(marker.state))
-                                }
+                ForEach(visibleReconnectMarkers) { marker in
+                    RuleMark(x: .value("Connection Event", marker.timestamp))
+                        .foregroundStyle(connectionOverlayColor(marker.state).opacity(0.85))
+                        .lineStyle(StrokeStyle(lineWidth: 1.0, dash: [2, 4]))
+                        .annotation(position: .top, alignment: .trailing) {
+                            if showAnnotationLabels && visibleReconnectMarkers.count <= 8 {
+                                Text(connectionOverlayLabel(marker.state))
+                                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                                    .foregroundStyle(connectionOverlayColor(marker.state))
                             }
-                    }
+                        }
                 }
             }
             .chartYAxis {
