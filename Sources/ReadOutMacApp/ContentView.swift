@@ -40,7 +40,7 @@ struct ContentView: View {
                 cards
                 alarmHistoryStrip
                 charts
-                if viewModel.isRuntimeLogPanelVisible {
+                if viewModel.isDebugInfoVisible && viewModel.isRuntimeLogPanelVisible {
                     runtimeLogPanel
                 }
             }
@@ -321,6 +321,11 @@ struct ContentView: View {
             Text(viewModel.configuration.useSimulator ? "Mode: Simulator" : "Mode: Hardware")
                 .font(.system(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(palette.tertiaryText)
+
+            Text("UI: \(viewModel.uiRefreshActualHzText)")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundStyle(palette.tertiaryText)
+                .lineLimit(1)
 
             if viewModel.isDebugInfoVisible {
                 Text(viewModel.uiRefreshRuntimeSummary)

@@ -69,6 +69,7 @@ final class DashboardViewModel: ObservableObject {
     @Published var availablePorts: [String] = []
     @Published var statusMessage: String = "Ready"
     @Published private(set) var uiRefreshRuntimeSummary: String = "UI normal 10Hz"
+    @Published private(set) var uiRefreshActualHzText: String = "--.-Hz"
     @Published private(set) var runtimeHealthBadges: [RuntimeHealthBadge] = []
     @Published var runtimeLogs: [RuntimeLogEntry] = []
     @Published var isSettingsPresented: Bool = false
@@ -1708,6 +1709,7 @@ final class DashboardViewModel: ObservableObject {
             skippedHz,
             smoothedUIRefreshProcessingMs
         )
+        uiRefreshActualHzText = String(format: "%.1fHz", actualHz)
 
         lastUIRefreshSummaryTimestamp = now
         lastUIRefreshSummaryAppliedTicks = appliedUIRefreshTicks
