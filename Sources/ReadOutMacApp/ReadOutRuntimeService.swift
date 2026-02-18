@@ -269,7 +269,7 @@ actor ReadOutRuntime {
         onEvent(.usbcStatus(.disconnected, nil))
     }
 
-    private static func reconnectDelay(forAttempt attempt: Int) -> TimeInterval {
+    static func reconnectDelay(forAttempt attempt: Int) -> TimeInterval {
         let initial = 0.5
         let raw = initial * pow(2.0, Double(max(0, attempt - 1)))
         return min(5.0, raw)

@@ -84,7 +84,7 @@ final class PcBeepController: @unchecked Sendable {
         #endif
     }
 
-    private static func soundName(for preset: MacAlertSoundPreset) -> String? {
+    static func soundName(for preset: MacAlertSoundPreset) -> String? {
         switch preset {
         case .system:
             return nil
