@@ -31,9 +31,13 @@ public struct MeasurementAlertConfiguration: Sendable, Equatable {
 }
 
 public enum MeasurementAlertEvaluator {
+    /// Fraction of threshold used as hysteresis band to prevent alarm oscillation.
+    static let hysteresisFraction: Double = 0.01
+
     public static func evaluateMultimeter(
         measurement: DeviceMeasurement,
-        configuration: MeasurementAlertConfiguration
+        configuration: MeasurementAlertConfiguration,
+        previousState: MeasurementAlertState = .none
     ) -> MeasurementAlertState {
         if measurement.isOpen || measurement.isOverload {
             return .open
@@ -47,12 +51,26 @@ public enum MeasurementAlertEvaluator {
             return .none
         }
 
-        if configuration.dcvHighAlarmEnabled, value > configuration.dcvHighAlarmValue {
-            return .highAlarm
+        if configuration.dcvHighAlarmEnabled {
+            let threshold = configuration.dcvHighAlarmValue
+            let clearThreshold = threshold * (1.0 - hysteresisFraction)
+            if value > threshold {
+                return .highAlarm
+            }
+            if previousState == .highAlarm, value > clearThreshold {
+                return .highAlarm
+            }
         }
 
-        if configuration.dcvLowAlarmEnabled, value < configuration.dcvLowAlarmValue {
-            return .lowAlarm
+        if configuration.dcvLowAlarmEnabled {
+            let threshold = configuration.dcvLowAlarmValue
+            let clearThreshold = threshold * (1.0 + hysteresisFraction)
+            if value < threshold {
+                return .lowAlarm
+            }
+            if previousState == .lowAlarm, value < clearThreshold {
+                return .lowAlarm
+            }
         }
 
         return .none

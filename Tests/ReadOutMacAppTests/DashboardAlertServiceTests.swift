@@ -123,6 +123,29 @@ func alertServiceBeepPolicyHonorsMasterToggleAndSourceFlags() {
 }
 
 @Test
+func alertServiceForwardsPreviousStateForHysteresis() {
+    var config = AppConfiguration()
+    config.dcvHighAlarmEnabled = true
+    config.dcvHighAlarmValue = 12.0
+
+    // Value in hysteresis band (11.88...12.0) holds alarm when previousState is .highAlarm
+    let inBand = DeviceMeasurement(
+        device: .multimeter,
+        mode: .dcVoltage,
+        modeString: "VOLT:DC",
+        primaryValue: 11.95,
+        primaryUnit: "V DC"
+    )
+
+    #expect(DashboardAlertService.evaluate(
+        measurement: inBand, configuration: config, previousState: .highAlarm
+    ) == .highAlarm)
+    #expect(DashboardAlertService.evaluate(
+        measurement: inBand, configuration: config, previousState: .none
+    ) == .none)
+}
+
+@Test
 func alertServiceBeepPolicyHonorsAlarmMuteState() {
     var config = AppConfiguration()
     config.beepOnShortPC = true

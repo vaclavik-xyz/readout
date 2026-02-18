@@ -45,11 +45,13 @@ enum MeasurementDisplayFormatter {
 enum DashboardAlertService {
     static func evaluate(
         measurement: DeviceMeasurement,
-        configuration: AppConfiguration
+        configuration: AppConfiguration,
+        previousState: MeasurementAlertState = .none
     ) -> MeasurementAlertState {
         MeasurementAlertEvaluator.evaluateMultimeter(
             measurement: measurement,
-            configuration: configuration.alertConfiguration
+            configuration: configuration.alertConfiguration,
+            previousState: previousState
         )
     }
 
