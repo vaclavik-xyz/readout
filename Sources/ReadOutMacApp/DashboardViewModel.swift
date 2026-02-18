@@ -993,7 +993,7 @@ final class DashboardViewModel: ObservableObject {
         let secondary = MeasurementDisplayFormatter.multimeterSecondary(measurement)
         let mode = MeasurementDisplayFormatter.multimeterModeTitle(measurement)
 
-        let alert = DashboardAlertService.evaluate(measurement: measurement, configuration: configuration)
+        let alert = DashboardAlertService.evaluate(measurement: measurement, configuration: configuration, previousState: previousAlert)
         latestMultimeterAlertState = alert
         reconcileAlarmAcknowledge(previousAlert: previousAlert, currentAlert: alert)
         pendingMultimeterSnapshot = MultimeterPresentationSnapshot(
@@ -1621,7 +1621,7 @@ final class DashboardViewModel: ObservableObject {
         case .normal:
             return showingBothDevices ? 150 : 180
         case .highLoad:
-            return showingBothDevices ? 90 : 120
+            return showingBothDevices ? 120 : 150
         }
     }
 
