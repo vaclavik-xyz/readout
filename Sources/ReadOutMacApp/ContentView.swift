@@ -670,7 +670,10 @@ struct ContentView: View {
         highThreshold: Double?,
         lowThreshold: Double?
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let showHeavyChartOverlays = !viewModel.isUIRefreshHighLoad
+        let showConnectionAndAlarmOverlays = showHeavyChartOverlays || viewModel.isDebugInfoVisible
+
+        return VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.system(size: 15, weight: .bold, design: .rounded))
                 .foregroundStyle(palette.primaryText)
@@ -682,20 +685,28 @@ struct ContentView: View {
                 )
                 .interpolationMethod(.catmullRom)
                 .foregroundStyle(color)
-                .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-
-                AreaMark(
-                    x: .value("Time", sample.timestamp),
-                    y: .value("Value", sample.value)
-                )
-                .interpolationMethod(.catmullRom)
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [color.opacity(0.35), color.opacity(0.05)],
-                            startPoint: .top,
-                            endPoint: .bottom
+                .lineStyle(
+                    StrokeStyle(
+                        lineWidth: showHeavyChartOverlays ? 2.5 : 2.0,
+                        lineCap: .round,
+                        lineJoin: .round
                     )
                 )
+
+                if showHeavyChartOverlays {
+                    AreaMark(
+                        x: .value("Time", sample.timestamp),
+                        y: .value("Value", sample.value)
+                    )
+                    .interpolationMethod(.catmullRom)
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [color.opacity(0.35), color.opacity(0.05)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                        )
+                    )
+                }
 
                 if let highThreshold {
                     RuleMark(y: .value("High Alarm", highThreshold))
@@ -709,30 +720,32 @@ struct ContentView: View {
                         .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [6, 4]))
                 }
 
-                ForEach(markers) { marker in
-                    RuleMark(x: .value("Alarm", marker.timestamp))
-                        .foregroundStyle(alarmMarkerColor(marker.state).opacity(0.9))
-                        .lineStyle(StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
-                        .annotation(position: .top, alignment: .leading) {
-                            if markers.count <= 8 {
-                                Text(alarmMarkerLabel(marker.state))
-                                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                                    .foregroundStyle(alarmMarkerColor(marker.state))
+                if showConnectionAndAlarmOverlays {
+                    ForEach(markers) { marker in
+                        RuleMark(x: .value("Alarm", marker.timestamp))
+                            .foregroundStyle(alarmMarkerColor(marker.state).opacity(0.9))
+                            .lineStyle(StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
+                            .annotation(position: .top, alignment: .leading) {
+                                if markers.count <= 8 {
+                                    Text(alarmMarkerLabel(marker.state))
+                                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                                        .foregroundStyle(alarmMarkerColor(marker.state))
+                                }
                             }
-                        }
-                }
+                    }
 
-                ForEach(reconnectMarkers) { marker in
-                    RuleMark(x: .value("Connection Event", marker.timestamp))
-                        .foregroundStyle(connectionOverlayColor(marker.state).opacity(0.85))
-                        .lineStyle(StrokeStyle(lineWidth: 1.0, dash: [2, 4]))
-                        .annotation(position: .top, alignment: .trailing) {
-                            if reconnectMarkers.count <= 8 {
-                                Text(connectionOverlayLabel(marker.state))
-                                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                                    .foregroundStyle(connectionOverlayColor(marker.state))
+                    ForEach(reconnectMarkers) { marker in
+                        RuleMark(x: .value("Connection Event", marker.timestamp))
+                            .foregroundStyle(connectionOverlayColor(marker.state).opacity(0.85))
+                            .lineStyle(StrokeStyle(lineWidth: 1.0, dash: [2, 4]))
+                            .annotation(position: .top, alignment: .trailing) {
+                                if reconnectMarkers.count <= 8 {
+                                    Text(connectionOverlayLabel(marker.state))
+                                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                                        .foregroundStyle(connectionOverlayColor(marker.state))
+                                }
                             }
-                        }
+                    }
                 }
             }
             .chartYAxis {

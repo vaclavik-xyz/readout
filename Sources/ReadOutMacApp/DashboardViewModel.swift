@@ -80,6 +80,7 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var isSessionReplayActive: Bool = false
     @Published var isDebugInfoVisible: Bool = false
     @Published var isChartInspectorEnabled: Bool = false
+    @Published private(set) var isUIRefreshHighLoad: Bool = false
     @Published var deviceVisibility: DashboardDeviceVisibility = .both
     @Published var theme: DashboardTheme = .system
     @Published var isRuntimeLogPanelVisible: Bool = true
@@ -1618,9 +1619,9 @@ final class DashboardViewModel: ObservableObject {
     private func chartMaxPointsForCurrentRefreshMode(showingBothDevices: Bool) -> Int {
         switch uiRefreshMode {
         case .normal:
-            return showingBothDevices ? 220 : 260
+            return showingBothDevices ? 150 : 180
         case .highLoad:
-            return showingBothDevices ? 160 : 190
+            return showingBothDevices ? 90 : 120
         }
     }
 
@@ -1677,6 +1678,7 @@ final class DashboardViewModel: ObservableObject {
             return
         }
         uiRefreshMode = mode
+        isUIRefreshHighLoad = mode == .highLoad
         uiRefreshModeSwitchCount += 1
         uiRefreshHighLoadScore = 0
         uiRefreshRecoverScore = 0
