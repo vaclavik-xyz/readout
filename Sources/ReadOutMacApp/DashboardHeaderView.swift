@@ -27,7 +27,7 @@ struct DashboardHeaderView: View {
 
             VStack(alignment: .trailing, spacing: DesignSystem.Spacing.sm) {
                 HStack(spacing: DesignSystem.Spacing.sm) {
-                    Picker("", selection: Binding(
+                    Picker("Device visibility", selection: Binding(
                         get: { viewModel.deviceVisibility },
                         set: { viewModel.setDeviceVisibility($0) }
                     )) {
@@ -43,6 +43,7 @@ struct DashboardHeaderView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(viewModel.isRenderPaused ? .green : .yellow)
+                    .accessibilityHint(viewModel.isRenderPaused ? "Resumes live UI updates" : "Pauses live UI updates")
 
                     Button(viewModel.isRuntimeActive ? "Disconnect" : "Connect") {
                         if viewModel.isRuntimeActive {
@@ -54,6 +55,7 @@ struct DashboardHeaderView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(viewModel.isRuntimeActive ? .red : .blue)
                     .disabled(viewModel.isRecoveryInProgress || (!viewModel.isRuntimeActive && !viewModel.canConnectAll))
+                    .accessibilityHint(viewModel.isRuntimeActive ? "Stops device connections" : "Starts device connections")
                 }
 
                 HStack(spacing: DesignSystem.Spacing.sm) {

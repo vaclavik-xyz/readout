@@ -13,6 +13,19 @@ struct DeviceCardView: View {
 
     @State private var connectingPulse = false
 
+    private var accessibilityLabelText: String {
+        var parts = [title, status.rawValue.capitalized]
+        if let alertState, alertState != .none {
+            parts.append(DashboardAlertService.text(for: alertState))
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    private var accessibilityValueText: String {
+        guard status == .connected else { return "" }
+        return "\(primary), \(secondary)"
+    }
+
     var body: some View {
         let accent = DashboardUIHelpers.alertAccentColor(alertState, defaultColor: palette.cardStrokeDefault)
 
@@ -24,8 +37,10 @@ struct DeviceCardView: View {
                 Spacer()
                 statusPill(status)
                     .opacity(status == .connecting ? (connectingPulse ? 0.4 : 1.0) : 1.0)
+                    .accessibilityHidden(true)
                 if let alertState, alertState != .none {
                     alertPill(alertState)
+                        .accessibilityHidden(true)
                 }
             }
             if status == .connected {
@@ -34,6 +49,9 @@ struct DeviceCardView: View {
                 stateOverlay
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabelText)
+        .accessibilityValue(accessibilityValueText)
         .padding(DesignSystem.Spacing.lg)
         .frame(maxWidth: .infinity, minHeight: 230, alignment: .topLeading)
         .background(
@@ -93,6 +111,7 @@ struct DeviceCardView: View {
                 Image(systemName: "cable.connector")
                     .font(.system(size: 28))
                     .foregroundStyle(palette.secondaryText.opacity(DesignSystem.Opacity.medium))
+                    .accessibilityHidden(true)
                 Text("Not connected")
                     .font(.system(size: 15, weight: .medium, design: .rounded))
                     .foregroundStyle(palette.secondaryText.opacity(DesignSystem.Opacity.medium))
@@ -103,6 +122,7 @@ struct DeviceCardView: View {
                 Image(systemName: "antenna.radiowaves.left.and.right")
                     .font(.system(size: 28))
                     .foregroundStyle(.yellow.opacity(0.7))
+                    .accessibilityHidden(true)
                 Text("Connecting...")
                     .font(.system(size: 15, weight: .medium, design: .rounded))
                     .foregroundStyle(.yellow.opacity(0.7))
@@ -113,6 +133,7 @@ struct DeviceCardView: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 28))
                     .foregroundStyle(.red.opacity(0.8))
+                    .accessibilityHidden(true)
                 Text("Connection error")
                     .font(.system(size: 15, weight: .medium, design: .rounded))
                     .foregroundStyle(.red.opacity(0.8))

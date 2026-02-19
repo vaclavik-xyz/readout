@@ -88,6 +88,8 @@ struct SettingsView: View {
                     HStack {
                         Text("Mac alert volume")
                         Slider(value: $configuration.pcBeepVolume, in: 0...1)
+                            .accessibilityLabel("PC beep volume")
+                            .accessibilityValue("\(Int(configuration.pcBeepVolume * 100))%")
                         Text(configuration.pcBeepVolume, format: .number.precision(.fractionLength(2)))
                             .frame(width: 44, alignment: .trailing)
                             .foregroundStyle(.secondary)
@@ -214,6 +216,7 @@ struct SettingsView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(hasBlockingErrors)
+            .accessibilityHint(hasBlockingErrors ? "Fix validation errors to enable saving" : "Saves configuration changes")
         }
         .padding(16)
         .background(.quaternary.opacity(0.15))

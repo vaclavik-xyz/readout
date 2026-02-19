@@ -25,6 +25,7 @@ struct AlarmHistoryStripView: View {
                                 .padding(.vertical, 3)
                                 .background(DashboardUIHelpers.alarmMarkerColor(marker.state), in: Capsule())
                         }
+                        .accessibilityElement(children: .combine)
                         .padding(.horizontal, DesignSystem.Spacing.sm)
                         .padding(.vertical, 6)
                         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.sm, style: .continuous))

@@ -13,6 +13,7 @@ struct RuntimeHealthStripView: View {
                             Circle()
                                 .fill(DashboardUIHelpers.runtimeHealthColor(badge.severity))
                                 .frame(width: 8, height: 8)
+                                .accessibilityHidden(true)
                             Text(badge.title)
                                 .font(.system(size: 11, weight: .bold, design: .rounded))
                                 .foregroundStyle(palette.secondaryText)
@@ -22,6 +23,7 @@ struct RuntimeHealthStripView: View {
                             .foregroundStyle(palette.tertiaryText)
                             .lineLimit(1)
                     }
+                    .accessibilityElement(children: .combine)
                     .padding(.horizontal, 10)
                     .padding(.vertical, DesignSystem.Spacing.sm)
                     .background(

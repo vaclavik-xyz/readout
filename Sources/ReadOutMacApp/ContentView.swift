@@ -131,7 +131,7 @@ struct ContentView: View {
                     .font(.system(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(palette.secondaryText)
 
-                Picker("", selection: $viewModel.selectedChartRange) {
+                Picker("Chart range", selection: $viewModel.selectedChartRange) {
                     ForEach(ChartRangePreset.allCases) { range in
                         Text(range.title).tag(range)
                     }

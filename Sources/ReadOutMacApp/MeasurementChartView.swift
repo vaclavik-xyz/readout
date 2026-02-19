@@ -128,6 +128,9 @@ struct MeasurementChartView: View {
                 }
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title) chart, \(samples.count) data points")
+        .accessibilityHint(isChartInspectorEnabled ? "Drag to inspect data points" : "")
         .padding(16)
         .frame(maxWidth: .infinity, minHeight: 260)
         .background(

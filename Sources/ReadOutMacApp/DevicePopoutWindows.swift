@@ -284,6 +284,11 @@ private struct DevicePopoutView: View {
                     emphasisPulse = false
                 }
             }
+            .onChange(of: alarmStatusText) { _, newText in
+                if let text = newText {
+                    AccessibilityNotification.Announcement(text).post()
+                }
+            }
         }
     }
 
@@ -389,6 +394,9 @@ private struct DevicePopoutView: View {
                     .font(.system(size: secondaryFontSize(for: mode) * scale, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(popoutAccessibilityLabel)
+            .accessibilityValue(primaryValueText)
 
         case .compact, .detailed:
             VStack(alignment: .leading, spacing: 6 * scale) {
@@ -405,7 +413,16 @@ private struct DevicePopoutView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(mode == .compact ? 1 : 2)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(popoutAccessibilityLabel)
+            .accessibilityValue(primaryValueText)
         }
+    }
+
+    private var popoutAccessibilityLabel: String {
+        let deviceName = kind == .multimeter ? "Multimeter" : "USB-C"
+        let statusText = (kind == .multimeter ? viewModel.multimeterStatus : viewModel.usbcStatus).rawValue.capitalized
+        return "\(deviceName), \(statusText)"
     }
 
     private var primaryValueText: String {

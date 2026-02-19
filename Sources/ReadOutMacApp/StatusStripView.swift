@@ -60,6 +60,14 @@ struct StatusStripView: View {
                 .font(.system(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(palette.tertiaryText)
         }
+        .onChange(of: viewModel.alarmControlSummary) { _, newValue in
+            if newValue != "Live" {
+                AccessibilityNotification.Announcement("Alarm: \(newValue)").post()
+            }
+        }
+        .onChange(of: viewModel.isRenderPaused) { _, paused in
+            AccessibilityNotification.Announcement(paused ? "UI paused" : "UI resumed").post()
+        }
         .padding(.horizontal, DesignSystem.Spacing.md)
         .padding(.vertical, 10)
         .background(
