@@ -353,14 +353,15 @@ private actor SoakEventRecorder {
         }
         let sorted = frameIntervals.sorted()
         let count = sorted.count
+        let last = count - 1
         let totalMs = sorted.reduce(0, +)
         let totalSeconds = totalMs / 1000.0
         let achievedHz = totalSeconds > 0 ? Double(count) / totalSeconds : 0
         return SoakLatencyMetrics(
-            p50Ms: sorted[count / 2],
-            p95Ms: sorted[min(Int(Double(count) * 0.95), count - 1)],
-            p99Ms: sorted[min(Int(Double(count) * 0.99), count - 1)],
-            maxMs: sorted[count - 1],
+            p50Ms: sorted[last / 2],
+            p95Ms: sorted[Int(Double(last) * 0.95)],
+            p99Ms: sorted[Int(Double(last) * 0.99)],
+            maxMs: sorted[last],
             achievedHz: achievedHz
         )
     }
