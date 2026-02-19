@@ -1,6 +1,6 @@
 import Foundation
 
-public struct AppConfiguration: Sendable, Equatable {
+public struct AppConfiguration: Sendable, Equatable, Codable {
     public enum ObsOutputMode: String, Sendable, Equatable, Codable {
         case valueOnly = "VALUE_ONLY"
         case valueAndUnit = "VALUE_AND_UNIT"
@@ -66,6 +66,86 @@ public struct AppConfiguration: Sendable, Equatable {
             self.multimeterFrame = multimeterFrame
             self.usbcFrame = usbcFrame
         }
+
+        private enum CodingKeys: String, CodingKey {
+            case name
+            case multimeterMode = "multimeter_mode"
+            case usbcMode = "usbc_mode"
+            case multimeterX = "multimeter_x"
+            case multimeterY = "multimeter_y"
+            case multimeterWidth = "multimeter_width"
+            case multimeterHeight = "multimeter_height"
+            case usbcX = "usbc_x"
+            case usbcY = "usbc_y"
+            case usbcWidth = "usbc_width"
+            case usbcHeight = "usbc_height"
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+
+            let rawName = ((try? c.decodeIfPresent(String.self, forKey: .name)) ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            name = String(rawName.prefix(48))
+
+            if let raw = try? c.decodeIfPresent(String.self, forKey: .multimeterMode) {
+                multimeterMode = PopoutDisplayMode(rawValue: raw.lowercased()) ?? .detailed
+            } else {
+                multimeterMode = .detailed
+            }
+
+            if let raw = try? c.decodeIfPresent(String.self, forKey: .usbcMode) {
+                usbcMode = PopoutDisplayMode(rawValue: raw.lowercased()) ?? .detailed
+            } else {
+                usbcMode = .detailed
+            }
+
+            multimeterFrame = Self.decodeFlatFrame(
+                from: c, xKey: .multimeterX, yKey: .multimeterY,
+                widthKey: .multimeterWidth, heightKey: .multimeterHeight
+            )
+            usbcFrame = Self.decodeFlatFrame(
+                from: c, xKey: .usbcX, yKey: .usbcY,
+                widthKey: .usbcWidth, heightKey: .usbcHeight
+            )
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(name, forKey: .name)
+            try c.encode(multimeterMode, forKey: .multimeterMode)
+            try c.encode(usbcMode, forKey: .usbcMode)
+
+            if let frame = multimeterFrame {
+                try c.encode(frame.x, forKey: .multimeterX)
+                try c.encode(frame.y, forKey: .multimeterY)
+                try c.encode(frame.width, forKey: .multimeterWidth)
+                try c.encode(frame.height, forKey: .multimeterHeight)
+            }
+            if let frame = usbcFrame {
+                try c.encode(frame.x, forKey: .usbcX)
+                try c.encode(frame.y, forKey: .usbcY)
+                try c.encode(frame.width, forKey: .usbcWidth)
+                try c.encode(frame.height, forKey: .usbcHeight)
+            }
+        }
+
+        private static func decodeFlatFrame(
+            from c: KeyedDecodingContainer<CodingKeys>,
+            xKey: CodingKeys, yKey: CodingKeys,
+            widthKey: CodingKeys, heightKey: CodingKeys
+        ) -> PopoutWindowFrame? {
+            guard
+                let x = try? c.decodeIfPresent(Double.self, forKey: xKey),
+                let y = try? c.decodeIfPresent(Double.self, forKey: yKey),
+                let width = try? c.decodeIfPresent(Double.self, forKey: widthKey),
+                let height = try? c.decodeIfPresent(Double.self, forKey: heightKey),
+                width >= 120, height >= 90
+            else {
+                return nil
+            }
+            return PopoutWindowFrame(x: x, y: y, width: width, height: height)
+        }
     }
 
     public var multimeterPort: String = ""
@@ -122,311 +202,285 @@ public struct AppConfiguration: Sendable, Equatable {
 
     public init() {}
 
-    public static func fromJSONData(_ data: Data) throws -> AppConfiguration {
-        let object = try JSONSerialization.jsonObject(with: data, options: [])
-        guard let dictionary = object as? [String: Any] else {
-            throw ConfigurationStoreError.invalidFormat
-        }
-        return fromDictionary(dictionary)
+    // MARK: - CodingKeys
+
+    private enum CodingKeys: String, CodingKey {
+        case multimeterPort = "multimeter_port"
+        case usbcPort = "usbc_port"
+        case multimeterEnabled = "multimeter_enabled"
+        case usbcEnabled = "usbc_enabled"
+        case multimeterAutoReconnect = "multimeter_auto_reconnect"
+        case usbcAutoReconnect = "usbc_auto_reconnect"
+        case useSimulator = "use_simulator"
+
+        case sampleRateHz = "sample_rate_hz"
+        case graphHistorySeconds = "graph_history_seconds"
+        case outputQueueCapacity = "output_queue_capacity"
+        case outputQueueMaxRetryAttempts = "output_queue_max_retry_attempts"
+
+        case shortThreshold = "short_threshold"
+        case beepOnShortMeter = "beep_on_short_meter"
+        case beepOnShortPC = "beep_on_short_pc"
+        case pcBeepVolume = "pc_beep_volume"
+
+        case dcvHighAlarmEnabled = "dcv_high_alarm_enabled"
+        case dcvHighAlarmValue = "dcv_high_alarm_value"
+        case dcvLowAlarmEnabled = "dcv_low_alarm_enabled"
+        case dcvLowAlarmValue = "dcv_low_alarm_value"
+        case beepOnAlarm = "beep_on_alarm"
+
+        case multimeterOutputFile = "multimeter_output_file"
+        case usbcOutputFile = "usbc_output_file"
+        case multimeterObsOutputMode = "multimeter_obs_output_mode"
+        case usbcObsOutputMode = "usbc_obs_output_mode"
+        case multimeterObsCustomTemplate = "multimeter_obs_custom_template"
+        case usbcObsCustomTemplate = "usbc_obs_custom_template"
+        case multimeterValueLabel = "multimeter_value_label"
+        case usbcValueLabel = "usbc_value_label"
+
+        case multimeterCsvLoggingEnabled = "multimeter_csv_logging_enabled"
+        case usbcCsvLoggingEnabled = "usbc_csv_logging_enabled"
+        case multimeterCsvLogFilePath = "multimeter_csv_log_file_path"
+        case usbcCsvLogFilePath = "usbc_csv_log_file_path"
+
+        case dashboardDeviceVisibility = "dashboard_device_visibility"
+        case dashboardTheme = "dashboard_theme"
+        case runtimeLogPanelVisible = "runtime_log_panel_visible"
+        case runtimeLogCaptureEnabled = "runtime_log_capture_enabled"
+        case dashboardBeepMasterEnabled = "dashboard_beep_master_enabled"
+        case pcBeepSoundPreset = "pc_beep_sound_preset"
+        case multimeterPopoutMode = "multimeter_popout_mode"
+        case usbcPopoutMode = "usbc_popout_mode"
+        case popoutAlarmEmphasisEnabled = "popout_alarm_emphasis_enabled"
+        case popoutLayoutProfiles = "popout_layout_profiles"
+        case activePopoutLayoutProfileName = "active_popout_layout_profile"
+
+        // Flat frame keys for top-level popout window positions.
+        case multimeterPopoutX = "multimeter_popout_x"
+        case multimeterPopoutY = "multimeter_popout_y"
+        case multimeterPopoutWidth = "multimeter_popout_width"
+        case multimeterPopoutHeight = "multimeter_popout_height"
+        case usbcPopoutX = "usbc_popout_x"
+        case usbcPopoutY = "usbc_popout_y"
+        case usbcPopoutWidth = "usbc_popout_width"
+        case usbcPopoutHeight = "usbc_popout_height"
     }
 
-    public static func fromDictionary(_ data: [String: Any]) -> AppConfiguration {
-        var config = AppConfiguration()
+    // MARK: - Decoding
 
-        func string(_ key: String, default defaultValue: String) -> String {
-            data[key] as? String ?? defaultValue
-        }
-        func bool(_ key: String, default defaultValue: Bool) -> Bool {
-            data[key] as? Bool ?? defaultValue
-        }
-        func int(_ key: String, default defaultValue: Int) -> Int {
-            data[key] as? Int ?? defaultValue
-        }
-        func double(_ key: String, default defaultValue: Double) -> Double {
-            if let d = data[key] as? Double {
-                return d
-            }
-            if let i = data[key] as? Int {
-                return Double(i)
-            }
-            return defaultValue
-        }
-        func optionalDouble(_ key: String) -> Double? {
-            if let d = data[key] as? Double {
-                return d
-            }
-            if let i = data[key] as? Int {
-                return Double(i)
-            }
-            return nil
-        }
-        func obsMode(_ key: String, default defaultValue: ObsOutputMode) -> ObsOutputMode {
-            guard let raw = data[key] as? String else {
-                return defaultValue
-            }
-            return ObsOutputMode(rawValue: raw.uppercased()) ?? defaultValue
-        }
-        func dashboardVisibility(_ key: String, default defaultValue: DashboardDeviceVisibility) -> DashboardDeviceVisibility {
-            guard let raw = data[key] as? String else {
-                return defaultValue
-            }
-            return DashboardDeviceVisibility(rawValue: raw.lowercased()) ?? defaultValue
-        }
-        func dashboardTheme(_ key: String, default defaultValue: DashboardTheme) -> DashboardTheme {
-            guard let raw = data[key] as? String else {
-                return defaultValue
-            }
-            return DashboardTheme(rawValue: raw.lowercased()) ?? defaultValue
-        }
-        func soundPreset(_ key: String, default defaultValue: MacAlertSoundPreset) -> MacAlertSoundPreset {
-            guard let raw = data[key] as? String else {
-                return defaultValue
-            }
-            return MacAlertSoundPreset(rawValue: raw.lowercased()) ?? defaultValue
-        }
-        func popoutDisplayMode(_ key: String, default defaultValue: PopoutDisplayMode) -> PopoutDisplayMode {
-            guard let raw = data[key] as? String else {
-                return defaultValue
-            }
-            return PopoutDisplayMode(rawValue: raw.lowercased()) ?? defaultValue
-        }
-        func popoutFrame(prefix: String) -> PopoutWindowFrame? {
-            guard
-                let x = optionalDouble("\(prefix)_x"),
-                let y = optionalDouble("\(prefix)_y"),
-                let width = optionalDouble("\(prefix)_width"),
-                let height = optionalDouble("\(prefix)_height")
-            else {
-                return nil
-            }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
 
-            guard width >= 120, height >= 90 else {
-                return nil
-            }
-            return PopoutWindowFrame(x: x, y: y, width: width, height: height)
-        }
-        func popoutFrame(from dictionary: [String: Any], prefix: String) -> PopoutWindowFrame? {
-            func optionalDouble(_ key: String) -> Double? {
-                if let d = dictionary[key] as? Double {
-                    return d
-                }
-                if let i = dictionary[key] as? Int {
-                    return Double(i)
-                }
-                return nil
-            }
+        // Strings
+        multimeterPort = (try? c.decodeIfPresent(String.self, forKey: .multimeterPort)) ?? ""
+        usbcPort = (try? c.decodeIfPresent(String.self, forKey: .usbcPort)) ?? ""
+        multimeterOutputFile = (try? c.decodeIfPresent(String.self, forKey: .multimeterOutputFile)) ?? ""
+        usbcOutputFile = (try? c.decodeIfPresent(String.self, forKey: .usbcOutputFile)) ?? ""
+        multimeterObsCustomTemplate = (try? c.decodeIfPresent(String.self, forKey: .multimeterObsCustomTemplate)) ?? "{value} {unit}"
+        usbcObsCustomTemplate = (try? c.decodeIfPresent(String.self, forKey: .usbcObsCustomTemplate)) ?? "{voltage} {current} {power}"
+        multimeterValueLabel = (try? c.decodeIfPresent(String.self, forKey: .multimeterValueLabel)) ?? ""
+        usbcValueLabel = (try? c.decodeIfPresent(String.self, forKey: .usbcValueLabel)) ?? ""
+        multimeterCsvLogFilePath = (try? c.decodeIfPresent(String.self, forKey: .multimeterCsvLogFilePath)) ?? ""
+        usbcCsvLogFilePath = (try? c.decodeIfPresent(String.self, forKey: .usbcCsvLogFilePath)) ?? ""
 
-            guard
-                let x = optionalDouble("\(prefix)_x"),
-                let y = optionalDouble("\(prefix)_y"),
-                let width = optionalDouble("\(prefix)_width"),
-                let height = optionalDouble("\(prefix)_height")
-            else {
-                return nil
-            }
+        // Bools
+        multimeterEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .multimeterEnabled)) ?? true
+        usbcEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .usbcEnabled)) ?? false
+        multimeterAutoReconnect = (try? c.decodeIfPresent(Bool.self, forKey: .multimeterAutoReconnect)) ?? true
+        usbcAutoReconnect = (try? c.decodeIfPresent(Bool.self, forKey: .usbcAutoReconnect)) ?? true
+        useSimulator = (try? c.decodeIfPresent(Bool.self, forKey: .useSimulator)) ?? false
+        beepOnShortMeter = (try? c.decodeIfPresent(Bool.self, forKey: .beepOnShortMeter)) ?? false
+        beepOnShortPC = (try? c.decodeIfPresent(Bool.self, forKey: .beepOnShortPC)) ?? false
+        dcvHighAlarmEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .dcvHighAlarmEnabled)) ?? false
+        dcvLowAlarmEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .dcvLowAlarmEnabled)) ?? false
+        beepOnAlarm = (try? c.decodeIfPresent(Bool.self, forKey: .beepOnAlarm)) ?? false
+        multimeterCsvLoggingEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .multimeterCsvLoggingEnabled)) ?? false
+        usbcCsvLoggingEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .usbcCsvLoggingEnabled)) ?? false
+        runtimeLogPanelVisible = (try? c.decodeIfPresent(Bool.self, forKey: .runtimeLogPanelVisible)) ?? true
+        runtimeLogCaptureEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .runtimeLogCaptureEnabled)) ?? true
+        dashboardBeepMasterEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .dashboardBeepMasterEnabled)) ?? true
+        popoutAlarmEmphasisEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .popoutAlarmEmphasisEnabled)) ?? false
 
-            guard width >= 120, height >= 90 else {
-                return nil
-            }
-            return PopoutWindowFrame(x: x, y: y, width: width, height: height)
-        }
+        // Ints
+        sampleRateHz = (try? c.decodeIfPresent(Int.self, forKey: .sampleRateHz)) ?? 10
+        graphHistorySeconds = (try? c.decodeIfPresent(Int.self, forKey: .graphHistorySeconds)) ?? 30
+        outputQueueCapacity = (try? c.decodeIfPresent(Int.self, forKey: .outputQueueCapacity)) ?? 256
+        outputQueueMaxRetryAttempts = (try? c.decodeIfPresent(Int.self, forKey: .outputQueueMaxRetryAttempts)) ?? 3
 
-        config.multimeterPort = string("multimeter_port", default: config.multimeterPort)
-        config.usbcPort = string("usbc_port", default: config.usbcPort)
-        config.multimeterEnabled = bool("multimeter_enabled", default: config.multimeterEnabled)
-        config.usbcEnabled = bool("usbc_enabled", default: config.usbcEnabled)
-        config.multimeterAutoReconnect = bool("multimeter_auto_reconnect", default: config.multimeterAutoReconnect)
-        config.usbcAutoReconnect = bool("usbc_auto_reconnect", default: config.usbcAutoReconnect)
-        config.useSimulator = bool("use_simulator", default: config.useSimulator)
+        // Doubles
+        shortThreshold = (try? c.decodeIfPresent(Double.self, forKey: .shortThreshold)) ?? 2.0
+        pcBeepVolume = (try? c.decodeIfPresent(Double.self, forKey: .pcBeepVolume)) ?? 0.5
+        dcvHighAlarmValue = (try? c.decodeIfPresent(Double.self, forKey: .dcvHighAlarmValue)) ?? 12.0
+        dcvLowAlarmValue = (try? c.decodeIfPresent(Double.self, forKey: .dcvLowAlarmValue)) ?? 0.0
 
-        config.sampleRateHz = max(1, min(50, int("sample_rate_hz", default: config.sampleRateHz)))
-        config.graphHistorySeconds = max(5, min(600, int("graph_history_seconds", default: config.graphHistorySeconds)))
-        config.outputQueueCapacity = max(8, min(2048, int("output_queue_capacity", default: config.outputQueueCapacity)))
-        config.outputQueueMaxRetryAttempts = max(0, min(10, int("output_queue_max_retry_attempts", default: config.outputQueueMaxRetryAttempts)))
+        // Enums (case-insensitive via string decode + normalize)
+        multimeterObsOutputMode = Self.decodeObsMode(from: c, forKey: .multimeterObsOutputMode) ?? .valueAndUnit
+        usbcObsOutputMode = Self.decodeObsMode(from: c, forKey: .usbcObsOutputMode) ?? .valueAndUnit
+        dashboardDeviceVisibility = Self.decodeLowercaseEnum(from: c, forKey: .dashboardDeviceVisibility) ?? .both
+        dashboardTheme = Self.decodeLowercaseEnum(from: c, forKey: .dashboardTheme) ?? .system
+        pcBeepSoundPreset = Self.decodeLowercaseEnum(from: c, forKey: .pcBeepSoundPreset) ?? .system
+        multimeterPopoutMode = Self.decodeLowercaseEnum(from: c, forKey: .multimeterPopoutMode) ?? .detailed
+        usbcPopoutMode = Self.decodeLowercaseEnum(from: c, forKey: .usbcPopoutMode) ?? .detailed
 
-        config.shortThreshold = max(0.1, double("short_threshold", default: config.shortThreshold))
-        config.beepOnShortMeter = bool("beep_on_short_meter", default: config.beepOnShortMeter)
-        config.beepOnShortPC = bool("beep_on_short_pc", default: config.beepOnShortPC)
-        config.pcBeepVolume = max(0, min(1, double("pc_beep_volume", default: config.pcBeepVolume)))
+        // Flat frame keys
+        multimeterPopoutFrame = Self.decodeFlatFrame(
+            from: c, xKey: .multimeterPopoutX, yKey: .multimeterPopoutY,
+            widthKey: .multimeterPopoutWidth, heightKey: .multimeterPopoutHeight
+        )
+        usbcPopoutFrame = Self.decodeFlatFrame(
+            from: c, xKey: .usbcPopoutX, yKey: .usbcPopoutY,
+            widthKey: .usbcPopoutWidth, heightKey: .usbcPopoutHeight
+        )
 
-        config.dcvHighAlarmEnabled = bool("dcv_high_alarm_enabled", default: config.dcvHighAlarmEnabled)
-        config.dcvHighAlarmValue = double("dcv_high_alarm_value", default: config.dcvHighAlarmValue)
-        config.dcvLowAlarmEnabled = bool("dcv_low_alarm_enabled", default: config.dcvLowAlarmEnabled)
-        config.dcvLowAlarmValue = double("dcv_low_alarm_value", default: config.dcvLowAlarmValue)
-        config.beepOnAlarm = bool("beep_on_alarm", default: config.beepOnAlarm)
-
-        config.multimeterOutputFile = string("multimeter_output_file", default: config.multimeterOutputFile)
-        config.usbcOutputFile = string("usbc_output_file", default: config.usbcOutputFile)
-        config.multimeterObsOutputMode = obsMode("multimeter_obs_output_mode", default: config.multimeterObsOutputMode)
-        config.usbcObsOutputMode = obsMode("usbc_obs_output_mode", default: config.usbcObsOutputMode)
-        config.multimeterObsCustomTemplate = string("multimeter_obs_custom_template", default: config.multimeterObsCustomTemplate)
-        config.usbcObsCustomTemplate = string("usbc_obs_custom_template", default: config.usbcObsCustomTemplate)
-        config.multimeterValueLabel = string("multimeter_value_label", default: config.multimeterValueLabel)
-        config.usbcValueLabel = string("usbc_value_label", default: config.usbcValueLabel)
-
-        config.multimeterCsvLoggingEnabled = bool("multimeter_csv_logging_enabled", default: config.multimeterCsvLoggingEnabled)
-        config.usbcCsvLoggingEnabled = bool("usbc_csv_logging_enabled", default: config.usbcCsvLoggingEnabled)
-        config.multimeterCsvLogFilePath = string("multimeter_csv_log_file_path", default: config.multimeterCsvLogFilePath)
-        config.usbcCsvLogFilePath = string("usbc_csv_log_file_path", default: config.usbcCsvLogFilePath)
-        config.dashboardDeviceVisibility = dashboardVisibility("dashboard_device_visibility", default: config.dashboardDeviceVisibility)
-        config.dashboardTheme = dashboardTheme("dashboard_theme", default: config.dashboardTheme)
-        config.runtimeLogPanelVisible = bool("runtime_log_panel_visible", default: config.runtimeLogPanelVisible)
-        config.runtimeLogCaptureEnabled = bool("runtime_log_capture_enabled", default: config.runtimeLogCaptureEnabled)
-        config.dashboardBeepMasterEnabled = bool("dashboard_beep_master_enabled", default: config.dashboardBeepMasterEnabled)
-        config.pcBeepSoundPreset = soundPreset("pc_beep_sound_preset", default: config.pcBeepSoundPreset)
-        config.multimeterPopoutMode = popoutDisplayMode("multimeter_popout_mode", default: config.multimeterPopoutMode)
-        config.usbcPopoutMode = popoutDisplayMode("usbc_popout_mode", default: config.usbcPopoutMode)
-        config.multimeterPopoutFrame = popoutFrame(prefix: "multimeter_popout")
-        config.usbcPopoutFrame = popoutFrame(prefix: "usbc_popout")
-        config.popoutAlarmEmphasisEnabled = bool("popout_alarm_emphasis_enabled", default: config.popoutAlarmEmphasisEnabled)
-        if let profileObjects = data["popout_layout_profiles"] as? [[String: Any]] {
+        // Profiles (tolerant of malformed entries)
+        if let rawProfiles = try? c.decodeIfPresent([PopoutLayoutProfile].self, forKey: .popoutLayoutProfiles) {
             var parsed: [PopoutLayoutProfile] = []
-            parsed.reserveCapacity(profileObjects.count)
-            for profileObject in profileObjects {
-                let rawName = (profileObject["name"] as? String)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                guard !rawName.isEmpty else {
-                    continue
-                }
-                let name = String(rawName.prefix(48))
-                let mmModeRaw = (profileObject["multimeter_mode"] as? String ?? "").lowercased()
-                let usbcModeRaw = (profileObject["usbc_mode"] as? String ?? "").lowercased()
-                let profile = PopoutLayoutProfile(
-                    name: name,
-                    multimeterMode: PopoutDisplayMode(rawValue: mmModeRaw) ?? .detailed,
-                    usbcMode: PopoutDisplayMode(rawValue: usbcModeRaw) ?? .detailed,
-                    multimeterFrame: popoutFrame(from: profileObject, prefix: "multimeter"),
-                    usbcFrame: popoutFrame(from: profileObject, prefix: "usbc")
-                )
-                if let existing = parsed.firstIndex(where: { $0.name == name }) {
+            parsed.reserveCapacity(rawProfiles.count)
+            for profile in rawProfiles {
+                guard !profile.name.isEmpty else { continue }
+                if let existing = parsed.firstIndex(where: { $0.name == profile.name }) {
                     parsed[existing] = profile
                 } else {
                     parsed.append(profile)
                 }
             }
-            config.popoutLayoutProfiles = parsed
-        }
-        let activeProfileName = string("active_popout_layout_profile", default: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if config.popoutLayoutProfiles.contains(where: { $0.name == activeProfileName }) {
-            config.activePopoutLayoutProfileName = activeProfileName
+            popoutLayoutProfiles = parsed
         } else {
-            config.activePopoutLayoutProfileName = ""
+            popoutLayoutProfiles = []
         }
 
-        // Legacy migrations from Python implementation.
-        if config.multimeterPort.isEmpty {
-            config.multimeterPort = string("port", default: "")
-        }
-        if config.multimeterOutputFile.isEmpty {
-            config.multimeterOutputFile = string("output_file", default: "")
-        }
-        if config.multimeterObsCustomTemplate == "{value} {unit}" {
-            let legacyTemplate = string("obs_custom_template", default: "")
-            if !legacyTemplate.isEmpty {
-                config.multimeterObsCustomTemplate = legacyTemplate
-            }
-        }
-        if config.multimeterObsOutputMode == .valueAndUnit {
-            config.multimeterObsOutputMode = obsMode("obs_output_mode", default: config.multimeterObsOutputMode)
-        }
-        if config.multimeterValueLabel.isEmpty {
-            config.multimeterValueLabel = string("value_label", default: "")
-        }
-        if config.multimeterCsvLogFilePath.isEmpty {
-            config.multimeterCsvLogFilePath = string("csv_log_file_path", default: "")
-        }
-        if !config.multimeterCsvLoggingEnabled {
-            config.multimeterCsvLoggingEnabled = bool("csv_logging_enabled", default: false)
+        // Active profile validation
+        let rawActiveProfile = ((try? c.decodeIfPresent(String.self, forKey: .activePopoutLayoutProfileName)) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if popoutLayoutProfiles.contains(where: { $0.name == rawActiveProfile }) {
+            activePopoutLayoutProfileName = rawActiveProfile
+        } else {
+            activePopoutLayoutProfileName = ""
         }
 
-        return config
+        clampValues()
     }
 
-    public func toDictionary() -> [String: Any] {
-        var dictionary: [String: Any] = [
-            "multimeter_port": multimeterPort,
-            "usbc_port": usbcPort,
-            "multimeter_enabled": multimeterEnabled,
-            "usbc_enabled": usbcEnabled,
-            "multimeter_auto_reconnect": multimeterAutoReconnect,
-            "usbc_auto_reconnect": usbcAutoReconnect,
-            "use_simulator": useSimulator,
-            "sample_rate_hz": sampleRateHz,
-            "graph_history_seconds": graphHistorySeconds,
-            "output_queue_capacity": outputQueueCapacity,
-            "output_queue_max_retry_attempts": outputQueueMaxRetryAttempts,
-            "short_threshold": shortThreshold,
-            "beep_on_short_meter": beepOnShortMeter,
-            "beep_on_short_pc": beepOnShortPC,
-            "pc_beep_volume": pcBeepVolume,
-            "dcv_high_alarm_enabled": dcvHighAlarmEnabled,
-            "dcv_high_alarm_value": dcvHighAlarmValue,
-            "dcv_low_alarm_enabled": dcvLowAlarmEnabled,
-            "dcv_low_alarm_value": dcvLowAlarmValue,
-            "beep_on_alarm": beepOnAlarm,
-            "multimeter_output_file": multimeterOutputFile,
-            "usbc_output_file": usbcOutputFile,
-            "multimeter_obs_output_mode": multimeterObsOutputMode.rawValue,
-            "usbc_obs_output_mode": usbcObsOutputMode.rawValue,
-            "multimeter_obs_custom_template": multimeterObsCustomTemplate,
-            "usbc_obs_custom_template": usbcObsCustomTemplate,
-            "multimeter_value_label": multimeterValueLabel,
-            "usbc_value_label": usbcValueLabel,
-            "multimeter_csv_logging_enabled": multimeterCsvLoggingEnabled,
-            "usbc_csv_logging_enabled": usbcCsvLoggingEnabled,
-            "multimeter_csv_log_file_path": multimeterCsvLogFilePath,
-            "usbc_csv_log_file_path": usbcCsvLogFilePath,
-            "dashboard_device_visibility": dashboardDeviceVisibility.rawValue,
-            "dashboard_theme": dashboardTheme.rawValue,
-            "runtime_log_panel_visible": runtimeLogPanelVisible,
-            "runtime_log_capture_enabled": runtimeLogCaptureEnabled,
-            "dashboard_beep_master_enabled": dashboardBeepMasterEnabled,
-            "pc_beep_sound_preset": pcBeepSoundPreset.rawValue,
-            "multimeter_popout_mode": multimeterPopoutMode.rawValue,
-            "usbc_popout_mode": usbcPopoutMode.rawValue,
-            "popout_alarm_emphasis_enabled": popoutAlarmEmphasisEnabled,
-            "active_popout_layout_profile": activePopoutLayoutProfileName,
-        ]
+    // MARK: - Encoding
 
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+
+        // Strings
+        try c.encode(multimeterPort, forKey: .multimeterPort)
+        try c.encode(usbcPort, forKey: .usbcPort)
+        try c.encode(multimeterOutputFile, forKey: .multimeterOutputFile)
+        try c.encode(usbcOutputFile, forKey: .usbcOutputFile)
+        try c.encode(multimeterObsCustomTemplate, forKey: .multimeterObsCustomTemplate)
+        try c.encode(usbcObsCustomTemplate, forKey: .usbcObsCustomTemplate)
+        try c.encode(multimeterValueLabel, forKey: .multimeterValueLabel)
+        try c.encode(usbcValueLabel, forKey: .usbcValueLabel)
+        try c.encode(multimeterCsvLogFilePath, forKey: .multimeterCsvLogFilePath)
+        try c.encode(usbcCsvLogFilePath, forKey: .usbcCsvLogFilePath)
+
+        // Bools
+        try c.encode(multimeterEnabled, forKey: .multimeterEnabled)
+        try c.encode(usbcEnabled, forKey: .usbcEnabled)
+        try c.encode(multimeterAutoReconnect, forKey: .multimeterAutoReconnect)
+        try c.encode(usbcAutoReconnect, forKey: .usbcAutoReconnect)
+        try c.encode(useSimulator, forKey: .useSimulator)
+        try c.encode(beepOnShortMeter, forKey: .beepOnShortMeter)
+        try c.encode(beepOnShortPC, forKey: .beepOnShortPC)
+        try c.encode(dcvHighAlarmEnabled, forKey: .dcvHighAlarmEnabled)
+        try c.encode(dcvLowAlarmEnabled, forKey: .dcvLowAlarmEnabled)
+        try c.encode(beepOnAlarm, forKey: .beepOnAlarm)
+        try c.encode(multimeterCsvLoggingEnabled, forKey: .multimeterCsvLoggingEnabled)
+        try c.encode(usbcCsvLoggingEnabled, forKey: .usbcCsvLoggingEnabled)
+        try c.encode(runtimeLogPanelVisible, forKey: .runtimeLogPanelVisible)
+        try c.encode(runtimeLogCaptureEnabled, forKey: .runtimeLogCaptureEnabled)
+        try c.encode(dashboardBeepMasterEnabled, forKey: .dashboardBeepMasterEnabled)
+        try c.encode(popoutAlarmEmphasisEnabled, forKey: .popoutAlarmEmphasisEnabled)
+
+        // Ints
+        try c.encode(sampleRateHz, forKey: .sampleRateHz)
+        try c.encode(graphHistorySeconds, forKey: .graphHistorySeconds)
+        try c.encode(outputQueueCapacity, forKey: .outputQueueCapacity)
+        try c.encode(outputQueueMaxRetryAttempts, forKey: .outputQueueMaxRetryAttempts)
+
+        // Doubles
+        try c.encode(shortThreshold, forKey: .shortThreshold)
+        try c.encode(pcBeepVolume, forKey: .pcBeepVolume)
+        try c.encode(dcvHighAlarmValue, forKey: .dcvHighAlarmValue)
+        try c.encode(dcvLowAlarmValue, forKey: .dcvLowAlarmValue)
+
+        // Enums
+        try c.encode(multimeterObsOutputMode, forKey: .multimeterObsOutputMode)
+        try c.encode(usbcObsOutputMode, forKey: .usbcObsOutputMode)
+        try c.encode(dashboardDeviceVisibility, forKey: .dashboardDeviceVisibility)
+        try c.encode(dashboardTheme, forKey: .dashboardTheme)
+        try c.encode(pcBeepSoundPreset, forKey: .pcBeepSoundPreset)
+        try c.encode(multimeterPopoutMode, forKey: .multimeterPopoutMode)
+        try c.encode(usbcPopoutMode, forKey: .usbcPopoutMode)
+
+        // Flat frame keys (only present when frame is set)
         if let frame = multimeterPopoutFrame {
-            dictionary["multimeter_popout_x"] = frame.x
-            dictionary["multimeter_popout_y"] = frame.y
-            dictionary["multimeter_popout_width"] = frame.width
-            dictionary["multimeter_popout_height"] = frame.height
+            try c.encode(frame.x, forKey: .multimeterPopoutX)
+            try c.encode(frame.y, forKey: .multimeterPopoutY)
+            try c.encode(frame.width, forKey: .multimeterPopoutWidth)
+            try c.encode(frame.height, forKey: .multimeterPopoutHeight)
         }
-
         if let frame = usbcPopoutFrame {
-            dictionary["usbc_popout_x"] = frame.x
-            dictionary["usbc_popout_y"] = frame.y
-            dictionary["usbc_popout_width"] = frame.width
-            dictionary["usbc_popout_height"] = frame.height
+            try c.encode(frame.x, forKey: .usbcPopoutX)
+            try c.encode(frame.y, forKey: .usbcPopoutY)
+            try c.encode(frame.width, forKey: .usbcPopoutWidth)
+            try c.encode(frame.height, forKey: .usbcPopoutHeight)
         }
 
+        // Profiles
         if !popoutLayoutProfiles.isEmpty {
-            dictionary["popout_layout_profiles"] = popoutLayoutProfiles.map { profile in
-                var profileDictionary: [String: Any] = [
-                    "name": profile.name,
-                    "multimeter_mode": profile.multimeterMode.rawValue,
-                    "usbc_mode": profile.usbcMode.rawValue,
-                ]
-                if let frame = profile.multimeterFrame {
-                    profileDictionary["multimeter_x"] = frame.x
-                    profileDictionary["multimeter_y"] = frame.y
-                    profileDictionary["multimeter_width"] = frame.width
-                    profileDictionary["multimeter_height"] = frame.height
-                }
-                if let frame = profile.usbcFrame {
-                    profileDictionary["usbc_x"] = frame.x
-                    profileDictionary["usbc_y"] = frame.y
-                    profileDictionary["usbc_width"] = frame.width
-                    profileDictionary["usbc_height"] = frame.height
-                }
-                return profileDictionary
-            }
+            try c.encode(popoutLayoutProfiles, forKey: .popoutLayoutProfiles)
         }
 
-        return dictionary
+        try c.encode(activePopoutLayoutProfileName, forKey: .activePopoutLayoutProfileName)
+    }
+
+    // MARK: - Value Clamping
+
+    private mutating func clampValues() {
+        sampleRateHz = max(1, min(50, sampleRateHz))
+        graphHistorySeconds = max(5, min(600, graphHistorySeconds))
+        outputQueueCapacity = max(8, min(2048, outputQueueCapacity))
+        outputQueueMaxRetryAttempts = max(0, min(10, outputQueueMaxRetryAttempts))
+        shortThreshold = max(0.1, shortThreshold)
+        pcBeepVolume = max(0, min(1, pcBeepVolume))
+    }
+
+    // MARK: - Decode Helpers
+
+    private static func decodeObsMode(
+        from c: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys
+    ) -> ObsOutputMode? {
+        guard let raw = try? c.decodeIfPresent(String.self, forKey: key) else { return nil }
+        return ObsOutputMode(rawValue: raw.uppercased())
+    }
+
+    private static func decodeLowercaseEnum<E: RawRepresentable>(
+        from c: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys
+    ) -> E? where E.RawValue == String {
+        guard let raw = try? c.decodeIfPresent(String.self, forKey: key) else { return nil }
+        return E(rawValue: raw.lowercased())
+    }
+
+    private static func decodeFlatFrame(
+        from c: KeyedDecodingContainer<CodingKeys>,
+        xKey: CodingKeys, yKey: CodingKeys,
+        widthKey: CodingKeys, heightKey: CodingKeys
+    ) -> PopoutWindowFrame? {
+        guard
+            let x = try? c.decodeIfPresent(Double.self, forKey: xKey),
+            let y = try? c.decodeIfPresent(Double.self, forKey: yKey),
+            let width = try? c.decodeIfPresent(Double.self, forKey: widthKey),
+            let height = try? c.decodeIfPresent(Double.self, forKey: heightKey),
+            width >= 120, height >= 90
+        else {
+            return nil
+        }
+        return PopoutWindowFrame(x: x, y: y, width: width, height: height)
     }
 }
 

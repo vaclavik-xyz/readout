@@ -8,6 +8,17 @@ private func uniqueTempURL(_ suffix: String) -> URL {
     return base.appendingPathComponent("readout-tests-\(id)-\(suffix)")
 }
 
+private func configFromDictionary(_ dict: [String: Any]) throws -> AppConfiguration {
+    let data = try JSONSerialization.data(withJSONObject: dict)
+    let migrated = try LegacyConfigMigrator.migrateKeys(in: data)
+    return try JSONDecoder().decode(AppConfiguration.self, from: migrated)
+}
+
+private func configFromRawDictionary(_ dict: [String: Any]) throws -> AppConfiguration {
+    let data = try JSONSerialization.data(withJSONObject: dict)
+    return try JSONDecoder().decode(AppConfiguration.self, from: data)
+}
+
 @Test
 func loadMissingFileReturnsDefaults() async throws {
     let configURL = uniqueTempURL("config.json")
@@ -79,7 +90,7 @@ func legacyKeysAreMigrated() throws {
         "csv_log_file_path": "/tmp/legacy.csv"
     ]
 
-    let migrated = AppConfiguration.fromDictionary(legacy)
+    let migrated = try configFromDictionary(legacy)
     #expect(migrated.multimeterPort == "/dev/cu.usbserial-legacy")
     #expect(migrated.multimeterOutputFile == "/tmp/legacy_output.txt")
     #expect(migrated.multimeterObsCustomTemplate == "VAL={value}")
@@ -99,7 +110,7 @@ func numericValuesAreClampedOnLoad() throws {
         "pc_beep_volume": 4.0
     ]
 
-    let migrated = AppConfiguration.fromDictionary(raw)
+    let migrated = try configFromRawDictionary(raw)
     #expect(migrated.sampleRateHz == 1)
     #expect(migrated.graphHistorySeconds == 600)
     #expect(migrated.outputQueueCapacity == 8)
@@ -146,7 +157,7 @@ func unknownDashboardEnumValuesFallbackToDefaults() throws {
         ]
     ]
 
-    let migrated = AppConfiguration.fromDictionary(raw)
+    let migrated = try configFromRawDictionary(raw)
     #expect(migrated.dashboardDeviceVisibility == .both)
     #expect(migrated.dashboardTheme == .system)
     #expect(migrated.pcBeepSoundPreset == .system)

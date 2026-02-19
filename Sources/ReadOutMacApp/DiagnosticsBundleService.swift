@@ -107,7 +107,8 @@ struct DiagnosticsBundleService {
     }
 
     func redactedConfigurationData(for configuration: AppConfiguration) throws -> Data {
-        var dictionary = configuration.toDictionary()
+        let encoded = try JSONEncoder().encode(configuration)
+        var dictionary = (try JSONSerialization.jsonObject(with: encoded) as? [String: Any]) ?? [:]
         let sensitivePathKeys: Set<String> = [
             "multimeter_output_file",
             "usbc_output_file",

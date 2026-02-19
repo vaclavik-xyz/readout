@@ -17,17 +17,17 @@ public actor ConfigurationStore {
         }
 
         let data = try Data(contentsOf: configFileURL)
-        return try AppConfiguration.fromJSONData(data)
+        let migrated = try LegacyConfigMigrator.migrateKeys(in: data)
+        return try JSONDecoder().decode(AppConfiguration.self, from: migrated)
     }
 
     public func save(_ configuration: AppConfiguration) throws {
         let directory = configFileURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
-        let json = try JSONSerialization.data(
-            withJSONObject: configuration.toDictionary(),
-            options: [.prettyPrinted, .sortedKeys]
-        )
-        try json.write(to: configFileURL, options: [.atomic])
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(configuration)
+        try data.write(to: configFileURL, options: [.atomic])
     }
 }
