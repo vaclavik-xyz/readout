@@ -284,11 +284,6 @@ private struct DevicePopoutView: View {
                     emphasisPulse = false
                 }
             }
-            .onChange(of: alarmStatusText) { _, newText in
-                if let text = newText {
-                    AccessibilityNotification.Announcement(text).post()
-                }
-            }
         }
     }
 

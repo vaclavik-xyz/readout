@@ -60,10 +60,11 @@ struct StatusStripView: View {
                 .font(.system(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(palette.tertiaryText)
         }
-        .onChange(of: viewModel.alarmControlSummary) { _, newValue in
-            if newValue != "Live" {
-                AccessibilityNotification.Announcement("Alarm: \(newValue)").post()
-            }
+        .onChange(of: viewModel.isAlarmSilenced) { _, silenced in
+            AccessibilityNotification.Announcement(silenced ? "Alarms silenced" : "Alarm silence ended").post()
+        }
+        .onChange(of: viewModel.isAlarmAcknowledged) { _, acked in
+            AccessibilityNotification.Announcement(acked ? "Alarm acknowledged" : "Alarm acknowledge cleared").post()
         }
         .onChange(of: viewModel.isRenderPaused) { _, paused in
             AccessibilityNotification.Announcement(paused ? "UI paused" : "UI resumed").post()
