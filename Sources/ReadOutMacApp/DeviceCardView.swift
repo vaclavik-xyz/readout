@@ -11,6 +11,8 @@ struct DeviceCardView: View {
     let alertState: MeasurementAlertState?
     let palette: DashboardPalette
 
+    @State private var connectingPulse = false
+
     var body: some View {
         let accent = DashboardUIHelpers.alertAccentColor(alertState, defaultColor: palette.cardStrokeDefault)
 
@@ -21,10 +23,49 @@ struct DeviceCardView: View {
                     .foregroundStyle(palette.primaryText)
                 Spacer()
                 statusPill(status)
+                    .opacity(status == .connecting ? (connectingPulse ? 0.4 : 1.0) : 1.0)
                 if let alertState, alertState != .none {
                     alertPill(alertState)
                 }
             }
+            if status == .connected {
+                connectedContent
+            } else {
+                stateOverlay
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .frame(maxWidth: .infinity, minHeight: 230, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.xl, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.xl, style: .continuous)
+                        .stroke(accent.opacity(DesignSystem.Opacity.full), lineWidth: 1.5)
+                )
+        )
+        .onChange(of: status) {
+            if status == .connecting {
+                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                    connectingPulse = true
+                }
+            } else {
+                withAnimation(.default) {
+                    connectingPulse = false
+                }
+            }
+        }
+        .onAppear {
+            if status == .connecting {
+                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                    connectingPulse = true
+                }
+            }
+        }
+    }
+
+    private var connectedContent: some View {
+        Group {
             Text(primary)
                 .font(.system(size: 44, weight: .black, design: .rounded))
                 .foregroundStyle(palette.primaryText)
@@ -42,16 +83,47 @@ struct DeviceCardView: View {
             .font(.system(size: 12, weight: .medium, design: .rounded))
             .foregroundStyle(palette.secondaryText)
         }
-        .padding(DesignSystem.Spacing.lg)
-        .frame(maxWidth: .infinity, minHeight: 230, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.xl, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.xl, style: .continuous)
-                        .stroke(accent.opacity(DesignSystem.Opacity.full), lineWidth: 1.5)
-                )
-        )
+    }
+
+    @ViewBuilder
+    private var stateOverlay: some View {
+        switch status {
+        case .disconnected:
+            VStack(spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: "cable.connector")
+                    .font(.system(size: 28))
+                    .foregroundStyle(palette.secondaryText.opacity(DesignSystem.Opacity.medium))
+                Text("Not connected")
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundStyle(palette.secondaryText.opacity(DesignSystem.Opacity.medium))
+            }
+            .frame(maxWidth: .infinity, minHeight: 120)
+        case .connecting:
+            VStack(spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .font(.system(size: 28))
+                    .foregroundStyle(.yellow.opacity(0.7))
+                Text("Connecting...")
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundStyle(.yellow.opacity(0.7))
+            }
+            .frame(maxWidth: .infinity, minHeight: 120)
+        case .error:
+            VStack(spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 28))
+                    .foregroundStyle(.red.opacity(0.8))
+                Text("Connection error")
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundStyle(.red.opacity(0.8))
+                Text("Check device and retry")
+                    .font(.system(size: 11, weight: .regular, design: .rounded))
+                    .foregroundStyle(palette.secondaryText.opacity(DesignSystem.Opacity.medium))
+            }
+            .frame(maxWidth: .infinity, minHeight: 120)
+        case .connected:
+            EmptyView()
+        }
     }
 
     private func statusPill(_ status: DeviceUIState) -> some View {
