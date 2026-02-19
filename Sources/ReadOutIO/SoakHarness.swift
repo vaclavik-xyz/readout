@@ -33,15 +33,34 @@ public struct SoakThresholds: Sendable, Equatable, Codable {
     public var maxTransportErrors: Int
     public var maxReconnectAttempts: Int
     public var minFramesCaptured: Int
+    public var maxP99LatencyMs: Double?
 
     public init(
         maxTransportErrors: Int,
         maxReconnectAttempts: Int,
-        minFramesCaptured: Int
+        minFramesCaptured: Int,
+        maxP99LatencyMs: Double? = nil
     ) {
         self.maxTransportErrors = max(0, maxTransportErrors)
         self.maxReconnectAttempts = max(0, maxReconnectAttempts)
         self.minFramesCaptured = max(0, minFramesCaptured)
+        self.maxP99LatencyMs = maxP99LatencyMs
+    }
+}
+
+public struct SoakLatencyMetrics: Sendable, Equatable, Codable {
+    public let p50Ms: Double
+    public let p95Ms: Double
+    public let p99Ms: Double
+    public let maxMs: Double
+    public let achievedHz: Double
+
+    public init(p50Ms: Double, p95Ms: Double, p99Ms: Double, maxMs: Double, achievedHz: Double) {
+        self.p50Ms = p50Ms
+        self.p95Ms = p95Ms
+        self.p99Ms = p99Ms
+        self.maxMs = maxMs
+        self.achievedHz = achievedHz
     }
 }
 
@@ -93,6 +112,7 @@ public struct SoakRunSummary: Sendable, Equatable, Codable {
     public let waitingRetryEvents: Int
     public let transportErrors: Int
     public let transportFaults: SoakTransportFaultCounters
+    public let latencyMetrics: SoakLatencyMetrics
     public let thresholdFailures: [String]
     public let passed: Bool
 }
@@ -123,7 +143,8 @@ public enum SoakPreset: String, CaseIterable, Sendable {
                 thresholds: SoakThresholds(
                     maxTransportErrors: 80,
                     maxReconnectAttempts: 80,
-                    minFramesCaptured: 400
+                    minFramesCaptured: 400,
+                    maxP99LatencyMs: 500
                 )
             )
 
@@ -228,12 +249,14 @@ public enum SoakRunner {
         await session.stop()
 
         let metrics = await recorder.snapshot()
+        let latency = await recorder.latencySnapshot()
         let transportFaults = await faultingTransport.faultCounters()
         let finishedAt = Date()
         let elapsed = finishedAt.timeIntervalSince(startedAt)
         let failures = evaluateThresholds(
             thresholds: configuration.thresholds,
-            metrics: metrics
+            metrics: metrics,
+            latency: latency
         )
 
         return SoakRunSummary(
@@ -249,6 +272,7 @@ public enum SoakRunner {
             waitingRetryEvents: metrics.waitingRetryEvents,
             transportErrors: metrics.transportErrors,
             transportFaults: transportFaults,
+            latencyMetrics: latency,
             thresholdFailures: failures,
             passed: reachedTarget && failures.isEmpty
         )
@@ -256,7 +280,8 @@ public enum SoakRunner {
 
     private static func evaluateThresholds(
         thresholds: SoakThresholds,
-        metrics: SoakEventMetrics
+        metrics: SoakEventMetrics,
+        latency: SoakLatencyMetrics
     ) -> [String] {
         var failures: [String] = []
         if metrics.transportErrors > thresholds.maxTransportErrors {
@@ -268,6 +293,9 @@ public enum SoakRunner {
         if metrics.framesCaptured < thresholds.minFramesCaptured {
             failures.append("insufficient_frames_captured")
         }
+        if let maxP99 = thresholds.maxP99LatencyMs, latency.p99Ms > maxP99 {
+            failures.append("p99_latency_exceeded")
+        }
         return failures
     }
 }
@@ -277,10 +305,20 @@ private actor SoakEventRecorder {
     private var reconnectAttempts = 0
     private var waitingRetryEvents = 0
     private var transportErrors = 0
+    private var frameIntervals: [Double] = []
+    private var lastFrameAt: ContinuousClock.Instant?
 
     func record(_ event: DeviceSessionEvent) {
         switch event {
         case .frameReceived:
+            let now = ContinuousClock.now
+            if let last = lastFrameAt {
+                let duration = now - last
+                let ms = Double(duration.components.seconds) * 1000.0
+                    + Double(duration.components.attoseconds) / 1e15
+                frameIntervals.append(ms)
+            }
+            lastFrameAt = now
             frames += 1
         case .transportError:
             transportErrors += 1
@@ -306,6 +344,24 @@ private actor SoakEventRecorder {
             reconnectAttempts: reconnectAttempts,
             waitingRetryEvents: waitingRetryEvents,
             transportErrors: transportErrors
+        )
+    }
+
+    func latencySnapshot() -> SoakLatencyMetrics {
+        guard !frameIntervals.isEmpty else {
+            return SoakLatencyMetrics(p50Ms: 0, p95Ms: 0, p99Ms: 0, maxMs: 0, achievedHz: 0)
+        }
+        let sorted = frameIntervals.sorted()
+        let count = sorted.count
+        let totalMs = sorted.reduce(0, +)
+        let totalSeconds = totalMs / 1000.0
+        let achievedHz = totalSeconds > 0 ? Double(count) / totalSeconds : 0
+        return SoakLatencyMetrics(
+            p50Ms: sorted[count / 2],
+            p95Ms: sorted[min(Int(Double(count) * 0.95), count - 1)],
+            p99Ms: sorted[min(Int(Double(count) * 0.99), count - 1)],
+            maxMs: sorted[count - 1],
+            achievedHz: achievedHz
         )
     }
 }

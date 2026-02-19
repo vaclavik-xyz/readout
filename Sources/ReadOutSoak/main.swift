@@ -20,7 +20,8 @@ struct ReadOutSoakMain {
                 configuration.thresholds = SoakThresholds(
                     maxTransportErrors: configuration.thresholds.maxTransportErrors,
                     maxReconnectAttempts: configuration.thresholds.maxReconnectAttempts,
-                    minFramesCaptured: max(1, frames)
+                    minFramesCaptured: max(1, frames),
+                    maxP99LatencyMs: configuration.thresholds.maxP99LatencyMs
                 )
             }
             if let timeout = options.timeoutOverrideSeconds {
