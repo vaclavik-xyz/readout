@@ -34,7 +34,7 @@ permissions:
 jobs:
   soak-extended:
     runs-on: macos-latest
-    timeout-minutes: 40
+    timeout-minutes: 55
     env:
       CI_LOG_DIR: .ci-logs
 

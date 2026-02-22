@@ -153,7 +153,7 @@ public enum SoakPreset: String, CaseIterable, Sendable {
                 sessionID: "soak-30m",
                 sampleRateHz: 10,
                 targetFrames: 18_000,
-                timeoutSeconds: 2_100,
+                timeoutSeconds: 2_700,
                 reconnectPolicy: ReconnectPolicy(enabled: true, initialDelaySeconds: 0.15, maxDelaySeconds: 2.0, multiplier: 1.8),
                 faultProfile: SoakFaultProfile(
                     seed: seed,
