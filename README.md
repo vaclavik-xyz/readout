@@ -1,7 +1,7 @@
 # readOut
 
 Native macOS app for realtime measurement workflows:
-- multimeter (SCPI-based)
+- multimeter (SCPI-based), made for OWON
 - USB-C power meter (streaming hex frames)
 
 Project focus: speed, reliability, parser compatibility, and production-ready tooling.
