@@ -56,7 +56,7 @@ jobs:
           set -euo pipefail
           preset="${{ github.event.inputs.preset || '' }}"
           if [[ -z "$preset" ]]; then
-            preset="30m"
+            preset="smoke"
           fi
 
           seed="${{ github.event.inputs.seed || '' }}"
