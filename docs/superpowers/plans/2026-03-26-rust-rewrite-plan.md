@@ -154,17 +154,19 @@ readout-core = { workspace = true }
 readout-io = { workspace = true }
 readout-persistence = { workspace = true }
 tokio = { workspace = true }
-eframe = "0.31"          # verify version at crates.io — must match egui_plot
-egui_plot = "0.31"       # must be same minor version as eframe
+eframe = "0.33"          # latest stable as of 2026; must match egui_plot minor
+egui_plot = "0.33"       # must be same minor version as eframe
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 clap = { workspace = true }
-rodio = { version = "0.20", optional = true }
+rodio = { version = "0.22", optional = true }
 
 [features]
 default = ["audio"]
 audio = ["rodio"]
 ```
+
+> **rodio 0.22 API note:** `OutputStream` → `MixerDeviceSink`, `OutputStreamBuilder` → `DeviceSinkBuilder`, `Sink` → `Player`, `Decoder::new()` → `Decoder::try_from()`. Use `DeviceSinkBuilder::open_default_sink()` to init audio. For async playback, wrap in `tokio::task::spawn_blocking`.
 
 ```rust
 // readout-gui/src/main.rs
@@ -185,12 +187,12 @@ readout-core = { workspace = true }
 readout-io = { workspace = true }
 readout-persistence = { workspace = true }
 tokio = { workspace = true }
-ratatui = "0.29"         # verify crossterm compat — consider using ratatui's re-export
-crossterm = "0.28"       # or remove and use ratatui::crossterm re-export
+ratatui = "0.30"
+futures = "0.3"          # for crossterm EventStream
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 clap = { workspace = true }
-rodio = { version = "0.20", optional = true }
+rodio = { version = "0.22", optional = true }
 
 [features]
 default = ["audio"]
