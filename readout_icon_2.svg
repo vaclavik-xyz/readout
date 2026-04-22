@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- playful gradient -->
+    <linearGradient id="waveG" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0A84FF"/>
+      <stop offset="0.55" stop-color="#7C5CFF"/>
+      <stop offset="1" stop-color="#34C759"/>
+    </linearGradient>
+
+    <!-- soft glow behind wave -->
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="18" result="b"/>
+      <feColorMatrix in="b" type="matrix"
+        values="1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+                0 0 0 0.55 0" result="g"/>
+      <feMerge>
+        <feMergeNode in="g"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- subtle top highlight -->
+    <linearGradient id="hi" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.10"/>
+      <stop offset="0.35" stop-color="#FFFFFF" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- base -->
+  <rect x="96" y="96" width="832" height="832" rx="180" fill="#0B0F14"/>
+
+  <!-- inner border -->
+  <rect x="126" y="126" width="772" height="772" rx="164" fill="none" stroke="#1B2633" stroke-width="6"/>
+
+  <!-- top highlight -->
+  <path d="M260 140 h504
+           c85 0 154 69 154 154 v40
+           c0-85-69-154-154-154 H260
+           c-85 0-154 69-154 154 v-40
+           c0-85 69-154 154-154z"
+        fill="url(#hi)"/>
+
+  <!-- wave glow (behind) -->
+  <path d="M200 600
+           C 295 610, 320 360, 420 375
+           C 520 390, 505 700, 610 690
+           C 705 682, 700 430, 790 440
+           C 865 448, 885 575, 924 566"
+        fill="none" stroke="url(#waveG)" stroke-width="62"
+        stroke-linecap="round" stroke-linejoin="round" opacity="0.35"
+        filter="url(#glow)"/>
+
+  <!-- main wave -->
+  <path d="M200 600
+           C 295 610, 320 360, 420 375
+           C 520 390, 505 700, 610 690
+           C 705 682, 700 430, 790 440
+           C 865 448, 885 575, 924 566"
+        fill="none" stroke="url(#waveG)" stroke-width="44"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- tiny “spark” dot for playful realtime feel -->
+  <circle cx="924" cy="566" r="10" fill="#EAF2FF" opacity="0.9"/>
+</svg>

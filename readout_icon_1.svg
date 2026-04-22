@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0A84FF"/>
+      <stop offset="1" stop-color="#34C759"/>
+    </linearGradient>
+  </defs>
+
+  <!-- macOS-style rounded square -->
+  <rect x="96" y="96" width="832" height="832" rx="180" fill="#0B0F14"/>
+
+  <!-- subtle inner border -->
+  <rect x="128" y="128" width="768" height="768" rx="160" fill="none" stroke="#1B2633" stroke-width="6"/>
+
+  <!-- signal trace -->
+  <path d="M220 590
+           C 300 590, 320 380, 400 380
+           C 475 380, 485 660, 560 660
+           C 640 660, 650 460, 730 460
+           C 790 460, 805 560, 860 560"
+        fill="none" stroke="url(#g)" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- readout capsule -->
+  <rect x="250" y="240" width="524" height="150" rx="75" fill="#0F1722" stroke="#1B2633" stroke-width="6"/>
+
+  <!-- readout glyphs (monospace feel) -->
+  <g fill="#EAF2FF">
+    <rect x="300" y="288" width="44" height="54" rx="12"/>
+    <rect x="362" y="288" width="44" height="54" rx="12" opacity="0.85"/>
+    <rect x="424" y="288" width="44" height="54" rx="12" opacity="0.7"/>
+    <rect x="516" y="288" width="44" height="54" rx="12"/>
+    <rect x="578" y="288" width="44" height="54" rx="12" opacity="0.85"/>
+    <rect x="640" y="288" width="44" height="54" rx="12" opacity="0.7"/>
+    <!-- dot -->
+    <circle cx="486" cy="315" r="10" opacity="0.9"/>
+  </g>
+</svg>
